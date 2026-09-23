@@ -7,12 +7,13 @@ interface Props {
   layer: number
   base: number
   manualHeights: boolean
+  bedStarts: boolean
   autoHeights: number[]
   used: boolean[]
   onChange: (next: Filament[], reindex?: (number | null)[]) => void
 }
 
-export default function FilamentEditor({ filaments, layer, base, manualHeights, autoHeights, used, onChange }: Props) {
+export default function FilamentEditor({ filaments, layer, base, manualHeights, bedStarts, autoHeights, used, onChange }: Props) {
   const [saved, setSaved] = useState<SavedPalette[]>(loadSavedPalettes)
   const [paletteName, setPaletteName] = useState('My AMS')
 
@@ -94,8 +95,11 @@ export default function FilamentEditor({ filaments, layer, base, manualHeights, 
               />
               <span>mm</span>
             </label>
-            <label className="bed-toggle" title="Print this colour from the bed up, so a dark base can't show through">
-              <input type="checkbox" checked={f.start_from_bed} onChange={(e) => update(i, { start_from_bed: e.target.checked })} />
+            <label
+              className="bed-toggle"
+              title={bedStarts ? "Print this colour from the bed up, so a dark base can't show through" : 'Not used by this relief strategy'}
+            >
+              <input type="checkbox" checked={f.start_from_bed} disabled={!bedStarts} onChange={(e) => update(i, { start_from_bed: e.target.checked })} />
               <span>From bed</span>
             </label>
             <span className="slot-actions">

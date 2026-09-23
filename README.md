@@ -160,7 +160,15 @@ the default 2 workers. Raise `LAYERLIFT_WORKERS` and the memory limit together.
 4. **Heights:** each filament has a top height (or heights follow brightness), with
    per-colour and per-region overrides. Everything snaps to the layer height. Light
    filaments can start from the bed. The base colour is the non-bed filament that covers
-   the most area, unless you choose one.
+   the most area, unless you choose one. A **relief strategy** trades that layout for fewer
+   filament changes, and so a faster print (fixture: 28 changes):
+   - *Detailed* (default): every colour is a column from the base or bed to its own height.
+   - *Compact*: the same columns, with the distinct heights squeezed to one layer apart and
+     no bed starts. The top view is unchanged but the relief is flatter (fixture: 6).
+   - *Stacked*: one filament per height band in height order, so every layer is a single
+     colour and a print needs one change per colour (fixture: 3). It even works with manual
+     swaps on a single-nozzle printer. Per-colour and per-area heights are ignored, the sides
+     show stripes, and a lighter band thinner than 0.6 mm triggers a show-through warning.
 5. **Geometry:** smooth ×4 upscale, then vectorising and an exact partition in priority
    order. Features narrower than the nozzle are handed to the neighbour sharing the longest
    edge. manifold3d extrudes and unions each filament. Any spot where one colour's pieces

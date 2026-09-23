@@ -47,6 +47,7 @@ const DEFAULT_OPTIONS: Options = {
   lighter_taller: true,
   base_filament: null,
   mirror: false,
+  strategy: 'detailed',
 }
 
 function remapIndex(map: (number | null)[], i: number | null | undefined): number | null {
@@ -386,6 +387,7 @@ export default function App() {
             layer={options.layer_mm}
             base={options.base_mm}
             manualHeights={options.height_mode === 'manual'}
+            bedStarts={options.strategy === 'detailed'}
             autoHeights={plan?.heights ?? []}
             used={usedFilaments}
             onChange={onFilaments}
@@ -520,6 +522,7 @@ export default function App() {
               override={regionOverrides[selectedRegion.id]}
               clusterHeight={clusterHeights[selectedRegion.cluster]}
               plannedHeight={plan?.heights[regionOverrides[selectedRegion.id]?.filament ?? mapping[selectedRegion.cluster]] ?? 0}
+              heightsLocked={options.strategy === 'stacked'}
               layer={options.layer_mm}
               onRegion={(o) => setRegion(selectedRegion.id, o)}
               onClusterFilament={(fil) => setClusterFilament(selectedRegion.cluster, fil)}

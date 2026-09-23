@@ -138,6 +138,7 @@ def run_build(
         relief_step_mm=request["relief_step_mm"],
         base_filament=request.get("base_filament"),
         mirror=request["mirror"],
+        strategy=request.get("strategy", "detailed"),
     )
     overrides = {int(k): RegionOverride(**v) for k, v in request.get("region_overrides", {}).items()}
     n_regions = len(analysis.region_info)

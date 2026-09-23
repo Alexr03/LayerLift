@@ -59,6 +59,7 @@ class BuildRequest(BaseModel):
     relief_step_mm: float = Field(default=0.4, ge=0, le=10)
     base_filament: int | None = Field(default=None, ge=0)
     mirror: bool = False
+    strategy: Literal["detailed", "compact", "stacked"] = "detailed"
 
     @field_validator("cluster_heights")
     @classmethod

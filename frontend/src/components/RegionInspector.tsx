@@ -9,6 +9,7 @@ interface Props {
   override: RegionOverride | undefined
   clusterHeight: number | undefined
   plannedHeight: number
+  heightsLocked: boolean
   layer: number
   onRegion: (o: RegionOverride | null) => void
   onClusterFilament: (filament: number) => void
@@ -69,35 +70,41 @@ export default function RegionInspector(p: Props) {
       </div>
 
       <div className="field-label">Top height</div>
-      <div className="row">
-        <label className="inline-num">
-          <input
-            type="number"
-            step={p.layer}
-            min={p.layer}
-            max={50}
-            placeholder={fmt(p.plannedHeight)}
-            value={p.override?.height_mm ?? ''}
-            onChange={(e) => p.onRegion({ ...p.override, height_mm: e.target.value === '' ? null : Number(e.target.value) })}
-            aria-label="Height for this region in millimetres"
-          />
-          <span>mm, this area</span>
-        </label>
-        <label className="inline-num">
-          <input
-            type="number"
-            step={p.layer}
-            min={p.layer}
-            max={50}
-            placeholder="—"
-            value={p.clusterHeight ?? ''}
-            onChange={(e) => p.onClusterHeight(e.target.value === '' ? null : Number(e.target.value))}
-            aria-label="Height for every area of this colour in millimetres"
-          />
-          <span>mm, whole colour</span>
-        </label>
-      </div>
-      <p className="hint">Leave empty to use the filament's height ({fmt(p.plannedHeight)} mm now).</p>
+      {p.heightsLocked ? (
+        <p className="hint">The stacked strategy sets heights by filament order ({fmt(p.plannedHeight)} mm for this filament).</p>
+      ) : (
+        <>
+          <div className="row">
+            <label className="inline-num">
+              <input
+                type="number"
+                step={p.layer}
+                min={p.layer}
+                max={50}
+                placeholder={fmt(p.plannedHeight)}
+                value={p.override?.height_mm ?? ''}
+                onChange={(e) => p.onRegion({ ...p.override, height_mm: e.target.value === '' ? null : Number(e.target.value) })}
+                aria-label="Height for this region in millimetres"
+              />
+              <span>mm, this area</span>
+            </label>
+            <label className="inline-num">
+              <input
+                type="number"
+                step={p.layer}
+                min={p.layer}
+                max={50}
+                placeholder="—"
+                value={p.clusterHeight ?? ''}
+                onChange={(e) => p.onClusterHeight(e.target.value === '' ? null : Number(e.target.value))}
+                aria-label="Height for every area of this colour in millimetres"
+              />
+              <span>mm, whole colour</span>
+            </label>
+          </div>
+          <p className="hint">Leave empty to use the filament's height ({fmt(p.plannedHeight)} mm now).</p>
+        </>
+      )}
     </section>
   )
 }

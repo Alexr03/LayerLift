@@ -56,6 +56,9 @@ export interface RegionOverride {
   height_mm?: number | null
 }
 
+/** How colours are arranged in height; see relief/pipeline.py STRATEGIES. */
+export type Strategy = 'detailed' | 'compact' | 'stacked'
+
 export interface BuildSettings {
   title: string
   analysis: AnalysisOptions
@@ -72,6 +75,7 @@ export interface BuildSettings {
   lighter_taller: boolean
   base_filament: number | null
   mirror: boolean
+  strategy: Strategy
 }
 
 export interface BuildWarning {

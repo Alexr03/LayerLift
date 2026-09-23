@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from bisect import bisect_left
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
@@ -16,6 +17,13 @@ from .colour import hex_to_lab, hex_to_rgb, relative_luminance
 from .mapping import suggest_mapping
 
 PLA_DENSITY = 1.24  # g/cm^3
+# Relief strategies: how colours are arranged in height.
+#   detailed: every colour is a column from the base (or bed) to its own height.
+#   compact:  the same columns squeezed to one layer per distinct height, no bed starts.
+#   stacked:  one filament per height band, so every layer is a single colour.
+STRATEGIES = ("detailed", "compact", "stacked")
+# Stacked: a lighter band thinner than this may let the colour below show through.
+STACK_COVER_MM = 0.6
 
 
 @dataclass
@@ -55,6 +63,7 @@ class BuildSettings:
     relief_step_mm: float = 0.4  # by_luminance: step between colours
     base_filament: int | None = None  # None = the non-bed filament covering the most area
     mirror: bool = False
+    strategy: str = "detailed"  # see STRATEGIES
     upscale: int | None = None  # None = auto (about 2048 px on the long side, max x4)
     smooth_sigma: float = 0.8
     simplify_px: float = 0.8
@@ -132,6 +141,66 @@ def filament_heights(
     return heights
 
 
+def squeeze_heights(levels, base_mm: float, layer: float) -> Callable[[float], float]:
+    """Compact strategy: map heights so the distinct levels above the base sit one layer apart.
+
+    Keeps their order, so which colour is taller is unchanged, but no set of colours is
+    repeated over several layers, which is what costs changes.
+    """
+    above = sorted({z for z in levels if z > base_mm + 1e-9})
+
+    def squeeze(z: float) -> float:
+        if z <= base_mm + 1e-9:
+            return z
+        return round(base_mm + (bisect_left(above, z - 1e-9) + 1) * layer, 6)
+
+    return squeeze
+
+
+def stack_bands(
+    used: list[int], heights: dict[int, float], base_filament: int | None, base_mm: float, layer: float
+) -> tuple[list[int], dict[int, float]]:
+    """Stacked strategy: order filaments bottom to top and give each band's top height.
+
+    The order follows the filament heights; the lowest filament is the base unless one is
+    chosen explicitly. Band i spans from the previous band's top to its own and is at least
+    one layer thick.
+    """
+    order = sorted(used, key=lambda f: (heights[f], f))
+    if base_filament is not None and order[:1] != [base_filament]:
+        order = [base_filament] + [f for f in order if f != base_filament]
+        top = base_mm
+    else:
+        top = max(base_mm, heights[order[0]])
+    top = max(top, layer)
+    tops: dict[int, float] = {}
+    for i, f in enumerate(order):
+        if i:
+            top = max(heights[f], round(top + layer, 6))
+        tops[f] = round(top, 6)
+    return order, tops
+
+
+def _extrude_stacked(elements: list[Element], order: list[int], tops: dict[int, float]):
+    """Extrude one band per filament: it covers every element whose filament is at or above it."""
+    silhouette = geo.clean(unary_union([e.footprint for e in elements if not e.footprint.is_empty]))
+    rank = {f: i for i, f in enumerate(order)}
+    merged = {}
+    intervals: list[tuple[int, float, float]] = []
+    z0 = 0.0
+    for j, fil in enumerate(order):
+        z1 = tops[fil]
+        # Merge in 2D and extrude once: a union of separate extrusions leaves near-coincident
+        # vertices along shared edges, which slicers merge into non-manifold edges.
+        footprint = geo.clean(unary_union([e.footprint for e in elements if rank[e.filament] >= j]), 1e-6)
+        solid = geo.extrude(footprint, z0, z1)
+        if solid is not None:
+            merged[fil] = solid
+            intervals.append((fil, z0, z1))
+        z0 = z1
+    return merged, intervals, silhouette
+
+
 def _extrude_all(elements: list[Element], silhouette, base_fil: int, base_mm: float):
     """Extrude every element (and the base slab) and union them per filament."""
     silhouette = geo.clean(unary_union([e.footprint for e in elements if not e.footprint.is_empty]))
@@ -155,12 +224,42 @@ def _extrude_all(elements: list[Element], silhouette, base_fil: int, base_mm: fl
     return merged, intervals, silhouette
 
 
-def _resolve_pinches(elements: list[Element], pinches: dict[int, list], base_fil: int, base_mm: float) -> None:
+def _column_spans(base_fil: int, base_mm: float):
+    """Columns: the touching elements that make up filament ``fil``'s solid between zlo and zhi."""
+
+    def spans(touching: list[Element], fil: int, zlo: float, zhi: float) -> list[Element]:
+        found = [
+            e
+            for e in touching
+            if e.filament == fil and (base_mm if e.filament == base_fil else e.z0) <= zhi + 1e-9 and e.z1 >= zlo - 1e-9
+        ]
+        if not found and fil == base_fil:
+            # The base slab itself is pinched between bed-starting parts: bridge those instead.
+            found = [e for e in touching if e.z0 == 0.0 and e.filament != base_fil]
+        return found
+
+    return spans
+
+
+def _band_spans(order: list[int]):
+    """Stacked: a filament's band is made of every element at or above it."""
+    rank = {f: i for i, f in enumerate(order)}
+
+    def spans(touching: list[Element], fil: int, zlo: float, zhi: float) -> list[Element]:
+        return [e for e in touching if rank[e.filament] >= rank[fil]]
+
+    return spans
+
+
+def _resolve_pinches(
+    elements: list[Element], pinches: dict[int, list], spans_of: Callable[[list[Element], int, float, float], list[Element]]
+) -> None:
     """Give a tiny disc around each pinch point to a single element.
 
     A pinch is where two pieces of one filament touch only at a point (in 2D) and so share
     just an edge in 3D. Handing the disc to one element joins that filament's pieces with
-    a small bridge and cleanly separates everyone else's.
+    a small bridge and cleanly separates everyone else's. ``spans_of`` picks the touching
+    elements that make up the pinched solid.
     """
     from shapely.geometry import Point
 
@@ -173,14 +272,7 @@ def _resolve_pinches(elements: list[Element], pinches: dict[int, list], base_fil
             done.append(pt)
             disc = pt.buffer(0.03, quad_segs=4)
             touching = [e for e in elements if not e.footprint.is_empty and e.footprint.intersects(disc)]
-            spans = [
-                e
-                for e in touching
-                if e.filament == fil and (base_mm if e.filament == base_fil else e.z0) <= zhi + 1e-9 and e.z1 >= zlo - 1e-9
-            ]
-            if not spans and fil == base_fil:
-                # The base slab itself is pinched between bed-starting parts: bridge those instead.
-                spans = [e for e in touching if e.z0 == 0.0 and e.filament != base_fil]
+            spans = spans_of(touching, fil, zlo, zhi)
             if spans:
                 owner = max(spans, key=lambda e: (e.z1, e.footprint.intersection(disc).area))
                 for e in touching:
@@ -217,6 +309,10 @@ def build_relief(
     n_clusters = len(analysis.clusters)
     if n_clusters == 0:
         raise ValueError("the image has no foreground")
+    if settings.strategy not in STRATEGIES:
+        raise ValueError("strategy must be one of " + ", ".join(STRATEGIES))
+    stacked = settings.strategy == "stacked"
+    compact = settings.strategy == "compact"
 
     # ---- mapping ---------------------------------------------------------------
     if mapping is None:
@@ -247,27 +343,35 @@ def build_relief(
     used = [i for i in range(len(filaments)) if areas[i] > 0]
 
     base_mm = snap(settings.base_mm, layer)
-    if settings.base_filament is not None:
-        if not 0 <= settings.base_filament < len(filaments):
-            raise ValueError("base_filament refers to a filament that does not exist")
+    if settings.base_filament is not None and not 0 <= settings.base_filament < len(filaments):
+        raise ValueError("base_filament refers to a filament that does not exist")
+    heights = filament_heights(filaments, used, settings, base_mm)
+    order: list[int] = []
+    if stacked:
+        order, tops = stack_bands(used, heights, settings.base_filament, base_mm, layer)
+        heights.update(tops)
+        base_fil = order[0]
+    elif settings.base_filament is not None:
         base_fil = settings.base_filament
     else:
         candidates = [i for i in used if not filaments[i].start_from_bed] or used
         base_fil = max(candidates, key=lambda i: areas[i])
-    heights = filament_heights(filaments, used, settings, base_mm)
 
-    groups: dict[tuple[int, float, float], list[int]] = {}
+    placed: list[tuple[int, int, float, float]] = []  # (region, filament, z0, z1)
     clamped: dict[int, list[float]] = {}
+    ignored_heights = False
     for r in analysis.region_info:
         fil = int(reg_fil[r.id])
         ov = region_overrides.get(r.id)
-        if ov is not None and ov.height_mm is not None:
-            z1 = snap(ov.height_mm, layer)
-        elif r.cluster in cluster_heights and cluster_heights[r.cluster] is not None:
-            z1 = snap(cluster_heights[r.cluster], layer)
-        else:
-            z1 = heights[fil]
-        from_bed = filaments[fil].start_from_bed or fil == base_fil
+        own_height = ov.height_mm if ov is not None and ov.height_mm is not None else cluster_heights.get(r.cluster)
+        if stacked:
+            # Heights come from the band order alone; a region can't be taller than its band.
+            ignored_heights |= own_height is not None
+            rank = order.index(fil)
+            placed.append((r.id, fil, heights[order[rank - 1]] if rank else 0.0, heights[fil]))
+            continue
+        z1 = snap(own_height, layer) if own_height is not None else heights[fil]
+        from_bed = (filaments[fil].start_from_bed and not compact) or fil == base_fil
         z0 = 0.0 if from_bed else base_mm
         if fil == base_fil:
             lo = base_mm
@@ -278,7 +382,14 @@ def build_relief(
         if z1 < lo:
             clamped.setdefault(fil, []).append(z1)
             z1 = lo
-        groups.setdefault((fil, z0, z1), []).append(r.id)
+        placed.append((r.id, fil, z0, z1))
+    if compact:
+        squeeze = squeeze_heights([z1 for *_, z1 in placed], base_mm, layer)
+        placed = [(rid, fil, z0, squeeze(z1)) for rid, fil, z0, z1 in placed]
+        heights = {f: squeeze(h) for f, h in heights.items()}
+    groups: dict[tuple[int, float, float], list[int]] = {}
+    for rid, fil, z0, z1 in placed:
+        groups.setdefault((fil, z0, z1), []).append(rid)
     for fil, zs in clamped.items():
         warnings.append(
             BuildWarning(
@@ -287,6 +398,24 @@ def build_relief(
                 {"filament": fil, "requested": sorted(set(zs))},
             )
         )
+
+    if ignored_heights:
+        warnings.append(
+            BuildWarning(
+                "heights_ignored",
+                "The stacked strategy sets heights by filament order, so per-colour and per-area heights were ignored.",
+            )
+        )
+    for below, fil in zip(order, order[1:]):
+        thickness = heights[fil] - heights[below]
+        if thickness < STACK_COVER_MM - 1e-9 and relative_luminance(filaments[fil].rgb) > relative_luminance(filaments[below].rgb):
+            warnings.append(
+                BuildWarning(
+                    "thin_band",
+                    f"{filaments[fil].name} is only {thickness:.2f} mm thick over darker {filaments[below].name}, which may show through.",
+                    {"filament": fil, "below": below, "thickness_mm": round(thickness, 3)},
+                )
+            )
 
     elements: list[Element] = []
     region_to_element = np.full(n_regions + 1, -1, np.int32)
@@ -363,11 +492,14 @@ def build_relief(
     for _attempt in range(6):
         # Later passes only fix corners where one colour touches itself; each is quicker to finish.
         report_progress("Building 3D parts" if _attempt == 0 else "Tidying up touching corners", 0.95 - 0.45 * 0.6**_attempt)
-        merged, intervals, silhouette = _extrude_all(elements, silhouette, base_fil, base_mm)
+        if stacked:
+            merged, intervals, silhouette = _extrude_stacked(elements, order, heights)
+        else:
+            merged, intervals, silhouette = _extrude_all(elements, silhouette, base_fil, base_mm)
         pinches = {fil: geo.pinch_edges(solid) for fil, solid in merged.items()}
         if not any(pinches.values()):
             break
-        _resolve_pinches(elements, pinches, base_fil, base_mm)
+        _resolve_pinches(elements, pinches, _band_spans(order) if stacked else _column_spans(base_fil, base_mm))
     else:
         warnings.append(
             BuildWarning(

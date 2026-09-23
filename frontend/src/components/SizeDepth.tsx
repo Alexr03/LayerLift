@@ -1,4 +1,18 @@
-import type { BuildSettings, Filament } from '../api'
+import type { BuildSettings, Filament, Strategy } from '../api'
+
+const STRATEGIES: { value: Strategy; label: string; hint: string }[] = [
+  { value: 'detailed', label: 'Detailed', hint: 'Every colour is a solid column at its own height. Most flexible, most filament changes.' },
+  {
+    value: 'compact',
+    label: 'Compact',
+    hint: 'Same columns, one layer between heights and nothing starts from the bed. Far fewer changes, a flatter relief.',
+  },
+  {
+    value: 'stacked',
+    label: 'Stacked',
+    hint: 'One colour per layer, stacked in height order: only one change per colour. Sides show stripes, and per-area heights are ignored.',
+  },
+]
 
 interface Props {
   s: BuildSettings
@@ -58,7 +72,18 @@ export default function SizeDepth({ s, filaments, onChange }: Props) {
       </div>
 
       <fieldset className="radio-row">
-        <legend>Colour heights</legend>
+        <legend>Relief strategy</legend>
+        {STRATEGIES.map((o) => (
+          <label key={o.value}>
+            <input type="radio" name="strategy" checked={s.strategy === o.value} onChange={() => onChange({ strategy: o.value })} />
+            {o.label}
+          </label>
+        ))}
+      </fieldset>
+      <p className="hint">{STRATEGIES.find((o) => o.value === s.strategy)?.hint}</p>
+
+      <fieldset className="radio-row">
+        <legend>{s.strategy === 'stacked' ? 'Colour order (bottom to top)' : 'Colour heights'}</legend>
         <label>
           <input type="radio" checked={s.height_mode === 'manual'} onChange={() => onChange({ height_mode: 'manual' })} />
           Set per filament
