@@ -1,0 +1,100 @@
+# LayerLift on k3s: Deployment + Service + Ingress (Traefik, the k3s default).
+# Releases are published to Docker Hub by .github/workflows/release.yml. Set `image:` below
+# to <dockerhub-user>/layerlift:<version> (or :beta to follow the latest beta).
+# Apply with: kubectl apply -f deploy/k8s/layerlift.yaml
+#
+# Keep replicas at 1: build outputs live on the pod's local disk until they expire, so a
+# download must hit the pod that did the build.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: layerlift
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: layerlift
+  namespace: layerlift
+  labels: { app: layerlift }
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app: layerlift }
+  template:
+    metadata:
+      labels: { app: layerlift }
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: layerlift
+          image: DOCKERHUB_USER/layerlift:0.0.1-beta # <- your Docker Hub user and version
+          imagePullPolicy: IfNotPresent
+          ports:
+            - { name: http, containerPort: 8000 }
+          env:
+            - { name: LAYERLIFT_MAX_UPLOAD_MB, value: "10" }
+            - { name: LAYERLIFT_WORKERS, value: "2" }
+            - { name: LAYERLIFT_JOB_TIMEOUT_SECONDS, value: "180" }
+            - { name: LAYERLIFT_JOB_TTL_SECONDS, value: "3600" }
+            - { name: LAYERLIFT_DATA_DIR, value: /data }
+          volumeMounts:
+            - { name: data, mountPath: /data }
+            - { name: tmp, mountPath: /tmp }
+          resources:
+            requests: { cpu: 250m, memory: 768Mi }
+            limits: { cpu: "2", memory: 3Gi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          startupProbe:
+            httpGet: { path: /api/health, port: http }
+            periodSeconds: 5
+            failureThreshold: 24
+          readinessProbe:
+            httpGet: { path: /api/health, port: http }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /api/health, port: http }
+            periodSeconds: 30
+            timeoutSeconds: 5
+      volumes:
+        - name: data
+          emptyDir: { sizeLimit: 2Gi } # job outputs, deleted after LAYERLIFT_JOB_TTL_SECONDS
+        - name: tmp
+          emptyDir: { sizeLimit: 512Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: layerlift
+  namespace: layerlift
+spec:
+  selector: { app: layerlift }
+  ports:
+    - { name: http, port: 80, targetPort: http }
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: layerlift
+  namespace: layerlift
+  annotations:
+    # Uploads are up to 10 MB; Traefik has no body limit by default.
+    # To require a login, uncomment the next line and apply deploy/k8s/basic-auth.yaml.
+    # traefik.ingress.kubernetes.io/router.middlewares: layerlift-basic-auth@kubernetescrd
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: layerlift.lan # <- change to your hostname
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: layerlift, port: { name: http } }

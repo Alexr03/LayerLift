@@ -1,0 +1,13 @@
+# Optional: HTTP basic auth in front of LayerLift via a Traefik middleware.
+# The app itself has no login; use this if the ingress is reachable beyond your LAN.
+# Create the secret with:
+#   htpasswd -nb youruser 'yourpassword' | kubectl -n layerlift create secret generic layerlift-users --from-file=users=/dev/stdin
+# then uncomment the router.middlewares annotation in layerlift.yaml.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: basic-auth
+  namespace: layerlift
+spec:
+  basicAuth:
+    secret: layerlift-users

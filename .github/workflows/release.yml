@@ -1,0 +1,191 @@
+# Test, version, and publish the LayerLift image to Docker Hub.
+#
+# Every push to master that changes code produces a new release:
+#   1. backend tests + frontend build/lint
+#   2. next version computed from the latest vX.Y.Z tag (see "Versioning" in README.md)
+#   3. image pushed to Docker Hub with the version tags
+#   4. git tag + GitHub release created (only after the image push succeeds)
+#
+# Required repository secrets: DOCKERHUB_USERNAME, DOCKERHUB_TOKEN.
+# Optional repository variable: DOCKERHUB_REPOSITORY (default: <DOCKERHUB_USERNAME>/layerlift).
+
+name: Release
+
+on:
+  push:
+    branches: [master]
+    paths-ignore:
+      - '**.md'
+      - 'deploy/**'
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Which part of the version to increase
+        type: choice
+        options: [auto, patch, minor, major]
+        default: auto
+      prerelease:
+        description: Pre-release label, e.g. beta or rc. Write "none" for a stable release. Leave empty to use the default below.
+        type: string
+        default: ''
+
+env:
+  # Default pre-release label. While set, versions look like 0.0.2-beta.
+  # Change to '' (or run the workflow manually with prerelease "none") to publish stable versions.
+  DEFAULT_PRERELEASE: beta
+  # Version used when the repository has no release tags yet.
+  FIRST_VERSION: 0.0.1
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.2.0 # setup-uv publishes no floating major tag
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      - name: Backend tests
+        working-directory: backend
+        run: |
+          uv sync --locked
+          uv run pytest -q
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Frontend build and lint
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+          npm run lint
+
+  release:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the tag and GitHub release
+    env:
+      IMAGE: ${{ vars.DOCKERHUB_REPOSITORY || format('{0}/layerlift', secrets.DOCKERHUB_USERNAME) }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # full history and tags, to find the previous version
+
+      - name: Compute version
+        id: version
+        env:
+          BUMP: ${{ inputs.bump || 'auto' }}
+          PRERELEASE_INPUT: ${{ inputs.prerelease }}
+        run: |
+          set -euo pipefail
+
+          label="$DEFAULT_PRERELEASE"
+          if [ -n "$PRERELEASE_INPUT" ]; then label="$PRERELEASE_INPUT"; fi
+          if [ "$label" = "none" ]; then label=""; fi
+
+          # Newest release tag; versionsort.suffix makes 1.2.0-beta sort before 1.2.0.
+          latest=$(git -c versionsort.suffix=- tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n1)
+
+          if [ -z "$latest" ]; then
+            core="$FIRST_VERSION"
+            echo "No previous release; starting at $core"
+          else
+            prev="${latest#v}"
+            prev_core="${prev%%-*}"
+            prev_pre=""
+            [ "$prev" != "$prev_core" ] && prev_pre="${prev#*-}"
+            IFS=. read -r major minor patch <<< "$prev_core"
+
+            bump="$BUMP"
+            if [ "$bump" = "auto" ]; then
+              # Conventional commits since the last release decide the bump.
+              log=$(git log "$latest"..HEAD --format='%s%n%b')
+              if echo "$log" | grep -qE '^[a-z]+(\([^)]*\))?!:|BREAKING CHANGE'; then
+                bump=major
+              elif echo "$log" | grep -qE '^feat(\([^)]*\))?:'; then
+                bump=minor
+              else
+                bump=patch
+              fi
+              # Before 1.0.0, breaking changes bump the minor version (semver 0.x convention).
+              if [ "$bump" = "major" ] && [ "$major" = "0" ]; then bump=minor; fi
+            fi
+
+            if [ -n "$prev_pre" ] && [ -z "$label" ] && [ "$bump" = "patch" ]; then
+              # Promote a pre-release to stable without skipping a number: 0.3.0-beta -> 0.3.0.
+              :
+            else
+              case "$bump" in
+                major) major=$((major + 1)); minor=0; patch=0 ;;
+                minor) minor=$((minor + 1)); patch=0 ;;
+                patch) patch=$((patch + 1)) ;;
+                *) echo "unknown bump '$bump'"; exit 1 ;;
+              esac
+            fi
+            core="$major.$minor.$patch"
+            echo "Previous release $latest, bump: $bump"
+          fi
+
+          version="$core${label:+-$label}"
+          if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
+            echo "Tag v$version already exists"; exit 1
+          fi
+
+          # Docker tags: exact version and commit always; channel tags depend on stability.
+          short=$(git rev-parse --short=7 HEAD)
+          tags="$IMAGE:$version,$IMAGE:sha-$short"
+          if [ -n "$label" ]; then
+            tags="$tags,$IMAGE:$label"
+          else
+            IFS=. read -r major minor patch <<< "$core"
+            tags="$tags,$IMAGE:$major.$minor,$IMAGE:$major,$IMAGE:latest"
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$([ -n "$label" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "tags=$tags" >> "$GITHUB_OUTPUT"
+          echo "### LayerLift $version" >> "$GITHUB_STEP_SUMMARY"
+          echo "Image tags: \`${tags//,/\`, \`}\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.version.outputs.tags }}
+          build-args: VERSION=${{ steps.version.outputs.version }}
+          labels: |
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Tag and create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          PRERELEASE: ${{ steps.version.outputs.prerelease }}
+        run: |
+          flags=(--target "$GITHUB_SHA" --title "v$VERSION" --generate-notes)
+          if [ "$PRERELEASE" = "true" ]; then flags+=(--prerelease); fi
+          gh release create "v$VERSION" "${flags[@]}" \
+            --notes "Docker image: \`$IMAGE:$VERSION\`"
