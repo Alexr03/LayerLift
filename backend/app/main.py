@@ -7,10 +7,12 @@ import contextlib
 import hashlib
 import json
 import logging
+import secrets
 import time
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Request, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import ValidationError
@@ -24,6 +26,7 @@ from . import worker
 from .config import get_settings
 from .jobs import JobStore, LRUCache
 from .pool import JobTimeout, WorkerCrashed, WorkerPool
+from .protect import SESSION_COOKIE, JobQueue, RateLimiter, Rejected, Sessions, client_ip, verify_turnstile
 from .schemas import AnalyseResponse, AnalysisOptions, BuildRequest, BuildResponse, FilamentIn, MapRequest, MapResponse
 
 log = logging.getLogger("layerlift")
@@ -47,6 +50,12 @@ async def lifespan(app: FastAPI):
     app.state.pool = WorkerPool(settings.workers)
     app.state.pool.warm_up()
     app.state.builds = {}  # job_id -> in-memory state of builds started with POST /api/builds
+    app.state.sessions = Sessions(settings.session_secret, settings.session_ttl_seconds)
+    app.state.limiter = RateLimiter(settings.rate_limit_per_minute)
+    app.state.map_limiter = RateLimiter(settings.map_rate_limit_per_minute)
+    app.state.queue = JobQueue(settings.max_queue, settings.max_jobs_per_client)
+    if settings.turnstile_enabled:
+        log.info("Cloudflare Turnstile human check is on")
 
     async def sweeper():
         while True:
@@ -69,7 +78,15 @@ async def lifespan(app: FastAPI):
         app.state.pool.shutdown()
 
 
-app = FastAPI(title="LayerLift", version=__version__, lifespan=lifespan)
+_docs = get_settings().enable_docs
+app = FastAPI(
+    title="LayerLift",
+    version=__version__,
+    lifespan=lifespan,
+    docs_url="/api/docs" if _docs else None,
+    redoc_url=None,
+    openapi_url="/api/openapi.json" if _docs else None,
+)
 
 
 # ----------------------------------------------------------------------------- errors
@@ -80,9 +97,39 @@ async def api_error_handler(_: Request, exc: ApiError):
     return _error(exc.status, exc.code, exc.message, exc.detail)
 
 
+@app.exception_handler(Rejected)
+async def rejected_handler(_: Request, exc: Rejected):
+    response = _error(exc.status, exc.code, exc.message)
+    if exc.retry_after:
+        response.headers["Retry-After"] = str(exc.retry_after)
+    return response
+
+
 @app.exception_handler(RequestValidationError)
 async def validation_handler(_: Request, exc: RequestValidationError):
     return _error(422, "invalid_request", "The request is invalid.", {"errors": json.loads(json.dumps(exc.errors(), default=str))})
+
+
+# Turnstile runs from challenges.cloudflare.com; everything else is served by this app.
+CSP = (
+    "default-src 'self'; script-src 'self' https://challenges.cloudflare.com; "
+    "frame-src https://challenges.cloudflare.com; connect-src 'self'; img-src 'self' data: blob:; "
+    "style-src 'self' 'unsafe-inline'; font-src 'self'; worker-src 'self' blob:; object-src 'none'; "
+    "base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+)
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    h = response.headers
+    h.setdefault("X-Content-Type-Options", "nosniff")
+    h.setdefault("Referrer-Policy", "same-origin")
+    h.setdefault("X-Frame-Options", "DENY")
+    h.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    if h.get("content-type", "").startswith("text/html"):
+        h.setdefault("Content-Security-Policy", CSP)
+    return response
 
 
 @app.middleware("http")
@@ -124,9 +171,28 @@ def _cache_key(image: bytes, options: AnalysisOptions, max_side: int) -> str:
     return h.hexdigest()[:24]
 
 
-async def _run(fn, *args, timeout: float):
+def _client(request: Request) -> str:
+    return client_ip(request, get_settings().client_ip_header)
+
+
+def require_human(request: Request) -> None:
+    """When Turnstile is on, expensive endpoints need a session from POST /api/session."""
+    if get_settings().turnstile_enabled and app.state.sessions.verify(request.cookies.get(SESSION_COOKIE)) is None:
+        raise Rejected(401, "verification_required", "Confirm you are human to continue.")
+
+
+def rate_limited(request: Request) -> str:
+    """Count one analysis or build against the caller's per-minute allowance. Returns the client key."""
+    client = _client(request)
+    app.state.limiter.check(client)
+    return client
+
+
+async def _run(fn, *args, timeout: float, job_id: str | None = None):
+    queue = app.state.queue
+    on_start = (lambda: queue.started(job_id)) if job_id else None
     try:
-        return await app.state.pool.run(fn, *args, timeout=timeout)
+        return await app.state.pool.run(fn, *args, timeout=timeout, on_start=on_start)
     except JobTimeout:
         raise ApiError(504, "timeout", f"Processing took longer than {timeout:g} s and was stopped.") from None
     except WorkerCrashed:
@@ -148,11 +214,51 @@ async def health():
 @app.get("/api/config")
 async def client_config():
     s = get_settings()
-    return {"max_upload_mb": s.max_upload_mb, "max_image_side": s.max_image_side, "job_ttl_seconds": s.job_ttl_seconds, "version": __version__}
+    return {
+        "max_upload_mb": s.max_upload_mb,
+        "max_image_side": s.max_image_side,
+        "job_ttl_seconds": s.job_ttl_seconds,
+        "version": __version__,
+        "turnstile_site_key": s.turnstile_site_key if s.turnstile_enabled else None,
+    }
 
 
-@app.post("/api/analyse", response_model=AnalyseResponse)
-async def analyse_image(file: UploadFile = File(...), options: str = Form("{}"), filaments: str = Form("")):
+@app.get("/api/session")
+async def session_state(request: Request):
+    """Whether a human check is required, and whether this browser has already passed it."""
+    s = get_settings()
+    verified = app.state.sessions.verify(request.cookies.get(SESSION_COOKIE)) is not None
+    return {
+        "required": s.turnstile_enabled,
+        "verified": verified or not s.turnstile_enabled,
+        "site_key": s.turnstile_site_key if s.turnstile_enabled else None,
+    }
+
+
+@app.post("/api/session")
+async def start_session(request: Request, token: str = Form("")):
+    """Exchange a Turnstile token for a signed session cookie."""
+    s = get_settings()
+    response = JSONResponse({"verified": True})
+    if not s.turnstile_enabled:
+        return response
+    client = _client(request)
+    app.state.map_limiter.check(client)  # verification attempts are cheap but not free
+    if not token or not await verify_turnstile(s.turnstile_secret_key, token, client):
+        raise Rejected(403, "verification_failed", "The human check failed. Try again.")
+    cookie, ttl = app.state.sessions.issue()
+    secure = s.cookie_secure if s.cookie_secure is not None else request.url.scheme == "https"
+    response.set_cookie(SESSION_COOKIE, cookie, max_age=ttl, httponly=True, samesite="lax", secure=secure, path="/api")
+    return response
+
+
+@app.post("/api/analyse", response_model=AnalyseResponse, dependencies=[Depends(require_human)])
+async def analyse_image(
+    file: UploadFile = File(...),
+    options: str = Form("{}"),
+    filaments: str = Form(""),
+    client: str = Depends(rate_limited),
+):
     """Detect source colours and regions. Optionally suggest a mapping onto ``filaments``."""
     s = get_settings()
     opts = _parse(AnalysisOptions, options, "options")
@@ -164,18 +270,27 @@ async def analyse_image(file: UploadFile = File(...), options: str = Form("{}"),
             raise ApiError(422, "invalid_request", f"Invalid filaments: {exc}") from None
     image = await _read_upload(file)
     key = _cache_key(image, opts, s.max_image_side)
-    analysis, payload = await _run(worker.run_analysis, image, opts.model_dump(), s.max_image_side, fils, timeout=s.analyse_timeout_seconds)
+    ticket = "analyse-" + secrets.token_hex(8)
+    app.state.queue.admit(ticket, client, "analyse")
+    try:
+        analysis, payload = await _run(
+            worker.run_analysis, image, opts.model_dump(), s.max_image_side, fils, timeout=s.analyse_timeout_seconds, job_id=ticket
+        )
+    finally:
+        app.state.queue.release(ticket)
     app.state.cache.put(key, analysis)
     return {"analysis_id": key, **payload}
 
 
-@app.post("/api/map", response_model=MapResponse)
-async def map_colours(req: MapRequest):
-    """Suggest a cluster -> filament mapping (cheap; runs inline)."""
+@app.post("/api/map", response_model=MapResponse, dependencies=[Depends(require_human)])
+async def map_colours(req: MapRequest, request: Request):
+    """Suggest a cluster -> filament mapping (cheap; runs in a thread so it can't block the server)."""
+    app.state.map_limiter.check(_client(request))
     k = len(req.clusters)
     if len(req.adjacency) != k or any(len(row) != k for row in req.adjacency):
         raise ApiError(422, "invalid_request", "adjacency must be a square matrix matching the clusters")
-    result = suggest_mapping(
+    result = await run_in_threadpool(
+        suggest_mapping,
         [hex_to_lab(c.hex) for c in req.clusters],
         [c.share for c in req.clusters],
         req.adjacency,
@@ -185,12 +300,17 @@ async def map_colours(req: MapRequest):
     return {"mapping": result.assignment, "method": result.method}
 
 
-async def _prepare_build(file: UploadFile, settings: str):
+async def _prepare_build(file: UploadFile, settings: str, client: str):
     s = get_settings()
     req = _parse(BuildRequest, settings, "settings")
     image = await _read_upload(file)
     key = _cache_key(image, req.analysis, s.max_image_side)
     job_id, job_dir = app.state.jobs.create()
+    try:
+        app.state.queue.admit(job_id, client, "build")
+    except Rejected:
+        app.state.jobs.discard(job_id)
+        raise
     return req, image, key, job_id, job_dir
 
 
@@ -206,10 +326,13 @@ async def _execute_build(req: BuildRequest, image: bytes, key: str, job_id: str,
             str(job_dir),
             s.max_image_side,
             timeout=s.job_timeout_seconds,
+            job_id=job_id,
         )
     except ApiError:
         app.state.jobs.discard(job_id)
         raise
+    finally:
+        app.state.queue.release(job_id)
     app.state.cache.put(key, analysis)
     base = f"/api/jobs/{job_id}"
     return {
@@ -221,17 +344,17 @@ async def _execute_build(req: BuildRequest, image: bytes, key: str, job_id: str,
     }
 
 
-@app.post("/api/build", response_model=BuildResponse)
-async def build(file: UploadFile = File(...), settings: str = Form(...)):
+@app.post("/api/build", response_model=BuildResponse, dependencies=[Depends(require_human)])
+async def build(file: UploadFile = File(...), settings: str = Form(...), client: str = Depends(rate_limited)):
     """Build the relief and wait for it. Returns stats plus URLs for the preview, GLB and downloads."""
-    req, image, key, job_id, job_dir = await _prepare_build(file, settings)
+    req, image, key, job_id, job_dir = await _prepare_build(file, settings, client)
     return await _execute_build(req, image, key, job_id, job_dir)
 
 
-@app.post("/api/builds", status_code=202)
-async def start_build(file: UploadFile = File(...), settings: str = Form(...)):
+@app.post("/api/builds", status_code=202, dependencies=[Depends(require_human)])
+async def start_build(file: UploadFile = File(...), settings: str = Form(...), client: str = Depends(rate_limited)):
     """Start a build in the background. Poll /api/jobs/{job_id}/status for progress and the result."""
-    req, image, key, job_id, job_dir = await _prepare_build(file, settings)
+    req, image, key, job_id, job_dir = await _prepare_build(file, settings, client)
     job = {"state": "queued", "started": time.time(), "result": None, "error": None}
 
     async def runner():
@@ -244,6 +367,7 @@ async def start_build(file: UploadFile = File(...), settings: str = Form(...)):
         except Exception:  # never leave a job "running" forever
             log.exception("build %s failed", job_id)
             app.state.jobs.discard(job_id)
+            app.state.queue.release(job_id)
             job["state"] = "error"
             job["error"] = {"code": "internal_error", "message": "The build failed unexpectedly.", "detail": {}}
 
@@ -264,7 +388,7 @@ async def job_status(job_id: str):
     elif job["state"] == "error":
         out.update(stage="Failed", progress=0.0, error=job["error"])
     else:
-        out.update(stage="Waiting for a free worker", progress=0.0)
+        out.update(stage="Waiting in line", progress=0.0, queue_position=app.state.queue.position(job_id))
         path = app.state.jobs.path(job_id)
         if path is not None and (path / "progress.json").is_file():
             try:

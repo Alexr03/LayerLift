@@ -185,6 +185,7 @@ export interface BuildStatus {
   stage: string
   progress: number
   elapsed_s: number
+  queue_position?: number | null
   result?: BuildResult
   error?: { code: string; message: string }
 }
@@ -217,4 +218,21 @@ export async function buildWithProgress(
     if (s.state === 'done' && s.result) return s.result
     if (s.state === 'error') throw new ApiError(422, s.error?.code ?? 'build_failed', s.error?.message ?? 'The build failed.')
   }
+}
+
+export interface SessionState {
+  required: boolean
+  verified: boolean
+  site_key: string | null
+}
+
+export async function getSession(): Promise<SessionState> {
+  return handle<SessionState>(await fetch('/api/session'))
+}
+
+/** Exchange a Turnstile token for a session cookie. */
+export async function startSession(token: string): Promise<void> {
+  const form = new FormData()
+  form.append('token', token)
+  await handle(await fetch('/api/session', { method: 'POST', body: form }))
 }

@@ -86,6 +86,56 @@ Environment variables, all optional:
 | `LAYERLIFT_JOB_TIMEOUT_SECONDS` | 180 | A build running longer is killed |
 | `LAYERLIFT_JOB_TTL_SECONDS` | 3600 | Build outputs are deleted after this |
 | `LAYERLIFT_DATA_DIR` | system temp | Where job directories live |
+| `LAYERLIFT_TURNSTILE_SITE_KEY` | empty | Cloudflare Turnstile site key; with the secret key, turns the human check on |
+| `LAYERLIFT_TURNSTILE_SECRET_KEY` | empty | Cloudflare Turnstile secret key |
+| `LAYERLIFT_SESSION_SECRET` | random at start | Signs session cookies; set it so sessions survive restarts |
+| `LAYERLIFT_SESSION_TTL_SECONDS` | 21600 | How long one human check lasts |
+| `LAYERLIFT_COOKIE_SECURE` | auto | Force the Secure flag on the session cookie |
+| `LAYERLIFT_MAX_QUEUE` | 8 | Jobs running or waiting across everyone; more get "busy, try again" |
+| `LAYERLIFT_MAX_JOBS_PER_CLIENT` | 2 | Jobs one client may have running or waiting |
+| `LAYERLIFT_RATE_LIMIT_PER_MINUTE` | 12 | Analyses and builds one client may start per minute |
+| `LAYERLIFT_MAP_RATE_LIMIT_PER_MINUTE` | 90 | Colour-mapping suggestions per client per minute |
+| `LAYERLIFT_CLIENT_IP_HEADER` | empty | Header to read the client IP from, e.g. `CF-Connecting-IP` |
+| `LAYERLIFT_ENABLE_DOCS` | false | Serve the API docs at `/api/docs` |
+
+## Running it on the internet
+
+These protections are built in:
+
+- **Human check.** With Turnstile keys set, visitors pass a Cloudflare Turnstile check
+  once. They then get a signed session cookie that lasts 6 hours. Analysing, building
+  and colour mapping all need that session.
+- **Bounded queue.** Analyses and builds wait for a free worker in arrival order. At most
+  `MAX_QUEUE` jobs can be running or waiting; beyond that, requests get `503` with
+  `Retry-After` instead of piling up. Each visitor may have `MAX_JOBS_PER_CLIENT` jobs at
+  once. Queued builds show their place in line.
+- **Rate limits.** Each client IP may start `RATE_LIMIT_PER_MINUTE` analyses and builds
+  per minute; excess requests get `429` with `Retry-After`.
+- **Limits already in place:** 10 MB uploads, images scaled down to 1024 px, a 180 s build
+  timeout that kills the worker, and outputs deleted after an hour.
+- **Security headers:** a Content-Security-Policy that allows only this site and Turnstile,
+  plus `nosniff`, `DENY` framing and a strict referrer policy. The API docs are off.
+
+To set it up:
+
+1. In the Cloudflare dashboard, open Turnstile and add a widget for your LayerLift
+   hostname. Copy the site key and the secret key.
+2. Create the Kubernetes secret from `deploy/k8s/secrets.example.yaml`. It holds both keys
+   plus a random `LAYERLIFT_SESSION_SECRET`.
+3. Put the site behind Cloudflare, ideally with a Cloudflare Tunnel so the origin is not
+   reachable directly. A Cloudflare WAF rate-limiting rule on `/api/*` adds a second layer
+   in front of the app's own limits.
+
+**Client IPs.** The image trusts `X-Forwarded-For` only from private addresses, such as
+Traefik and the pod network. The IP used for limits is therefore the one your proxy saw,
+and a visitor can't fake it. Set `LAYERLIFT_CLIENT_IP_HEADER=CF-Connecting-IP` only if
+your proxy chain loses the real address, and only when the origin accepts traffic from
+Cloudflare alone. Otherwise anyone could forge that header.
+
+**Capacity.** Measured on the 512 px sample image, the container idles at about 270 MB,
+and each build running at the same time adds about 250 MB. A build takes about
+11 seconds. Larger images need more, so the manifest's 3 GiB limit leaves headroom for
+the default 2 workers. Raise `LAYERLIFT_WORKERS` and the memory limit together.
 
 ## Design choices
 

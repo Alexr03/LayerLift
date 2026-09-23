@@ -10,12 +10,16 @@ import {
   type RegionOverride,
   analyse,
   buildWithProgress,
+  getConfig,
+  getSession,
   suggestMapping,
 } from './api'
 import { loadCurrentPalette, storeCurrentPalette } from './palettes'
 import { makePlan } from './plan'
 import ColourList from './components/ColourList'
 import FilamentEditor from './components/FilamentEditor'
+import Footer from './components/Footer'
+import HumanCheck from './components/HumanCheck'
 import LayerStack from './components/LayerStack'
 import MappingCanvas from './components/MappingCanvas'
 import ProgressCard from './components/ProgressCard'
@@ -69,6 +73,12 @@ export default function App() {
   const [view, setView] = useState<View>('map')
   const [explode, setExplode] = useState(0)
   const [dragging, setDragging] = useState(false)
+  const [version, setVersion] = useState<string | null>(null)
+  const [gate, setGate] = useState<{ required: boolean; verified: boolean; siteKey: string | null }>({
+    required: false,
+    verified: true,
+    siteKey: null,
+  })
   const fileInput = useRef<HTMLInputElement>(null)
   const buildAbort = useRef<AbortController | null>(null)
 
@@ -87,6 +97,28 @@ export default function App() {
   const stale = result != null && builtKey !== settingsKey
   const plan = useMemo(() => (analysis && mapping.length === analysis.clusters.length ? makePlan(analysis, mapping, settings) : null), [analysis, mapping, settings])
 
+  // ---------------------------------------------------------------- human check
+
+  useEffect(() => {
+    getConfig()
+      .then((c) => setVersion(c.version))
+      .catch(() => undefined)
+    getSession()
+      .then((s) => setGate({ required: s.required, verified: s.verified, siteKey: s.site_key }))
+      .catch(() => undefined)
+  }, [])
+  const needsCheck = gate.required && !gate.verified
+  const onVerified = useCallback(() => setGate((g) => ({ ...g, verified: true })), [])
+
+  const fail = useCallback((e: unknown) => {
+    if (e instanceof ApiError && e.code === 'verification_required') {
+      setGate((g) => ({ ...g, verified: false }))
+      setError("Your session has expired. Confirm you're human again, then retry.")
+    } else {
+      setError(e instanceof ApiError ? e.message : 'Could not reach the LayerLift server.')
+    }
+  }, [])
+
   // ---------------------------------------------------------------- image + analysis
 
   const runAnalysis = useCallback(
@@ -104,16 +136,20 @@ export default function App() {
         setResult(null)
         setView('map')
       } catch (e) {
-        setError(e instanceof ApiError ? e.message : 'Could not reach the LayerLift server.')
+        fail(e)
       } finally {
         setBusy(null)
       }
     },
-    [filaments],
+    [filaments, fail],
   )
 
   const acceptFile = (f: File | undefined) => {
     if (!f) return
+    if (needsCheck) {
+      setError("Confirm you're human first, then choose your image again.")
+      return
+    }
     if (!ACCEPT.includes(f.type) && !/\.(png|jpe?g|webp|svg)$/i.test(f.name)) {
       setError('Use a PNG, JPEG, WebP or SVG image.')
       return
@@ -225,7 +261,7 @@ export default function App() {
       setView('3d')
     } catch (e) {
       if ((e as Error).name === 'AbortError') return
-      setError(e instanceof ApiError ? e.message : 'Could not reach the LayerLift server.')
+      fail(e)
     } finally {
       if (buildAbort.current === ctrl) {
         setBusy(null)
@@ -287,12 +323,13 @@ export default function App() {
             ) : (
               <p className="hint">PNG, JPEG, WebP or SVG up to {MAX_MB} MB. Logos, badges and icons with flat colours work best.</p>
             )}
+            {needsCheck && analysis && gate.siteKey && <HumanCheck siteKey={gate.siteKey} onVerified={onVerified} />}
             <div className="row wrap">
-              <button type="button" className={file ? 'ghost' : 'primary'} onClick={() => fileInput.current?.click()}>
+              <button type="button" className={file ? 'ghost' : 'primary'} onClick={() => fileInput.current?.click()} disabled={needsCheck}>
                 {file ? 'Replace image' : 'Choose image'}
               </button>
               {!file && (
-                <button type="button" className="ghost" onClick={loadSample}>
+                <button type="button" className="ghost" onClick={loadSample} disabled={needsCheck}>
                   Try the sample
                 </button>
               )}
@@ -409,14 +446,18 @@ export default function App() {
                 </svg>
                 <h2>Drop a logo here</h2>
                 <p>LayerLift finds its colours, matches them to the filaments in your AMS, and stacks each colour at its own height.</p>
-                <div className="row center">
-                  <button type="button" className="primary" onClick={() => fileInput.current?.click()}>
-                    Choose image
-                  </button>
-                  <button type="button" className="ghost" onClick={loadSample}>
-                    Try the sample
-                  </button>
-                </div>
+                {needsCheck && gate.siteKey ? (
+                  <HumanCheck siteKey={gate.siteKey} onVerified={onVerified} />
+                ) : (
+                  <div className="row center">
+                    <button type="button" className="primary" onClick={() => fileInput.current?.click()}>
+                      Choose image
+                    </button>
+                    <button type="button" className="ghost" onClick={loadSample}>
+                      Try the sample
+                    </button>
+                  </div>
+                )}
               </div>
             )}
             {busy === 'analysing' && (
@@ -424,11 +465,13 @@ export default function App() {
             )}
             {busy === 'building' && (
               <ProgressCard
-                title={status?.state === 'queued' || !status ? 'Starting the build' : status.stage}
+                title={!status ? 'Starting the build' : status.state === 'queued' ? 'Waiting in line' : status.stage}
                 progress={status?.progress ?? 0}
                 detail={
                   status?.state === 'queued'
-                    ? 'Waiting for a free worker. Another build is running.'
+                    ? (status.queue_position ?? 1) <= 1
+                      ? "You're next. Your build starts as soon as the one before it finishes."
+                      : `${(status.queue_position ?? 1) - 1} builds are ahead of you. This page updates by itself.`
                     : `${(status?.elapsed_s ?? 0) < 1 ? 'Just started' : `${Math.round(status!.elapsed_s)} s so far`}. Detailed images take longer. You can keep editing; changes apply to the next build.`
                 }
               />
@@ -461,7 +504,7 @@ export default function App() {
                     : 'Build to see the 3D model.'
                 : 'Choose an image to start.'}
             </p>
-            <button type="button" className="primary big" onClick={runBuild} disabled={!analysis || busy != null}>
+            <button type="button" className="primary big" onClick={runBuild} disabled={!analysis || busy != null || needsCheck}>
               {busy === 'building' ? `Building… ${Math.round((status?.progress ?? 0) * 100)}%` : result && !stale ? 'Build again' : 'Build relief'}
             </button>
           </div>
@@ -510,6 +553,7 @@ export default function App() {
           )}
         </aside>
       </main>
+      <Footer version={version} />
     </div>
   )
 }

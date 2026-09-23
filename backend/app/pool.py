@@ -45,8 +45,11 @@ class WorkerPool:
     def busy(self) -> int:
         return self._workers - self._sem._value  # noqa: SLF001 - informational only
 
-    async def run(self, fn, *args, timeout: float):
+    async def run(self, fn, *args, timeout: float, on_start=None):
+        """Run fn in a worker. Waits (FIFO) for a free worker; on_start fires when one is free."""
         async with self._sem:
+            if on_start is not None:
+                on_start()
             loop = asyncio.get_running_loop()
             future = loop.run_in_executor(self._pool, fn, *args)
             try:

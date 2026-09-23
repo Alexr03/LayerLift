@@ -42,6 +42,14 @@ spec:
             - { name: LAYERLIFT_JOB_TIMEOUT_SECONDS, value: "180" }
             - { name: LAYERLIFT_JOB_TTL_SECONDS, value: "3600" }
             - { name: LAYERLIFT_DATA_DIR, value: /data }
+            # --- public deployments (see "Running it on the internet" in README.md) ---
+            - { name: LAYERLIFT_MAX_QUEUE, value: "8" } # jobs running or waiting, across everyone
+            - { name: LAYERLIFT_MAX_JOBS_PER_CLIENT, value: "2" }
+            - { name: LAYERLIFT_RATE_LIMIT_PER_MINUTE, value: "12" } # analyses + builds per client
+            - { name: LAYERLIFT_COOKIE_SECURE, value: "true" } # the site is served over HTTPS
+          # Turnstile keys and the session secret come from the optional Secret below.
+          envFrom:
+            - secretRef: { name: layerlift-secrets, optional: true }
           volumeMounts:
             - { name: data, mountPath: /data }
             - { name: tmp, mountPath: /tmp }

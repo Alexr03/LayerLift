@@ -17,7 +17,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     LAYERLIFT_DATA_DIR=/tmp/layerlift \
     LAYERLIFT_STATIC_DIR=/app/static \
-    LAYERLIFT_VERSION=${VERSION}
+    LAYERLIFT_VERSION=${VERSION} \
+    FORWARDED_ALLOW_IPS="127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
 LABEL org.opencontainers.image.title="LayerLift" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.source="https://github.com/Alexr03/LayerLift"
@@ -44,4 +45,6 @@ USER 10001
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s \
   CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=4).status == 200 else 1)"
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]
+# Forwarded headers are trusted only from private addresses (Traefik, the pod network),
+# so clients cannot fake their IP. Override FORWARDED_ALLOW_IPS if your proxy differs.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]

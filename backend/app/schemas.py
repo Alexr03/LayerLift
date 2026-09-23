@@ -75,7 +75,7 @@ class MapClusterIn(BaseModel):
 
 
 class MapRequest(BaseModel):
-    clusters: list[MapClusterIn] = Field(min_length=1, max_length=32)
+    clusters: list[MapClusterIn] = Field(min_length=1, max_length=16)
     adjacency: list[list[float]]
     filaments: list[FilamentIn] = Field(min_length=1, max_length=16)
     fixed: dict[int, int] = Field(default_factory=dict)

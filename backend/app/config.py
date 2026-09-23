@@ -22,6 +22,35 @@ class Settings(BaseSettings):
     static_dir: Path | None = None  # built frontend; defaults to ./static or ../frontend/dist
     analysis_cache_size: int = 16
 
+    # --- protections for public deployments -------------------------------------------
+    # Cloudflare Turnstile. When both keys are set, visitors must pass the check once per
+    # session before they can analyse or build.
+    turnstile_site_key: str = ""
+    turnstile_secret_key: str = ""
+    # Signs session cookies. Set it so sessions survive restarts; otherwise a random one is used.
+    session_secret: str = ""
+    session_ttl_seconds: int = 6 * 3600
+    # Mark the session cookie Secure. None = only when the request arrived over HTTPS.
+    # Set true when TLS ends at Cloudflare or another proxy that does not pass X-Forwarded-Proto.
+    cookie_secure: bool | None = None
+    # Header carrying the real client IP when behind a proxy, e.g. "CF-Connecting-IP" behind
+    # Cloudflare. Only set it if every request really comes through that proxy.
+    client_ip_header: str = ""
+    # Jobs (analyses + builds) running or waiting, across everyone. Further requests get 503.
+    max_queue: int = 8
+    # Jobs one client may have running or waiting at once.
+    max_jobs_per_client: int = 2
+    # Analyses + builds one client may start per minute.
+    rate_limit_per_minute: int = 12
+    # Mapping suggestions (cheap, but CPU) one client may request per minute.
+    map_rate_limit_per_minute: int = 90
+    # Serve the interactive API docs at /docs. Off by default for public deployments.
+    enable_docs: bool = False
+
+    @property
+    def turnstile_enabled(self) -> bool:
+        return bool(self.turnstile_site_key and self.turnstile_secret_key)
+
     @property
     def max_upload_bytes(self) -> int:
         return int(self.max_upload_mb * 1024 * 1024)
