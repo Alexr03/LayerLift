@@ -160,3 +160,4 @@ class BuildResponse(BaseModel):
     layers: list[LayerOut]
     warnings: list[WarningOut]
     elapsed_s: float
+    saved_until: str | None = None  # signed-in accounts: when the stored copy in "My builds" expires

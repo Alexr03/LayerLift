@@ -11,7 +11,9 @@ backend/app/      FastAPI service (process pool, job store, static frontend)
 backend/tests/    pytest: acceptance tests, unit tests, API tests, Orca round-trip
 frontend/         React + Vite + TypeScript UI, three.js 3D preview
 deploy/k8s/       k3s manifests (Deployment, Service, Traefik Ingress, optional basic auth)
+deploy/pocketbase/ PocketBase image + schema migrations, for accounts (optional)
 Dockerfile        multi-stage: build frontend, then slim Python 3.12 runtime
+docker-compose.yml LayerLift + PocketBase, wired together
 ```
 
 ## Run it
@@ -21,6 +23,13 @@ Dockerfile        multi-stage: build frontend, then slim Python 3.12 runtime
 ```sh
 docker build -t layerlift .
 docker run --rm -p 8000:8000 layerlift      # http://localhost:8000
+```
+
+**With accounts** (LayerLift + PocketBase, see [Accounts](#accounts-pocketbase)):
+
+```sh
+cp .env.example .env                         # set PB_SUPERUSER_PASSWORD and a session secret
+docker compose up -d --build                 # http://localhost:8000
 ```
 
 **Development:**
@@ -33,9 +42,10 @@ cd frontend && npm install && npm run dev    # UI on :5173, proxies /api to :800
 
 `npm run build` puts the UI in `frontend/dist`, which the API serves automatically.
 
-**Tests:** `cd backend && uv run pytest` (46 tests, about a minute). The OrcaSlicer
+**Tests:** `cd backend && uv run pytest` (about two minutes). The OrcaSlicer
 round-trip test runs only when OrcaSlicer is installed (set `ORCA_SLICER` to its path if it
-is not in the default location).
+is not in the default location). The accounts test against a real PocketBase runs only when
+`LAYERLIFT_TEST_POCKETBASE_URL` is set; `tests/test_accounts.py` shows how to start one.
 
 **k3s:** edit `image:` and `host:` in `deploy/k8s/layerlift.yaml`, then
 `kubectl apply -f deploy/k8s/layerlift.yaml`. Use a released Docker Hub tag (see below).
@@ -97,6 +107,14 @@ Environment variables, all optional:
 | `LAYERLIFT_MAP_RATE_LIMIT_PER_MINUTE` | 90 | Colour-mapping suggestions per client per minute |
 | `LAYERLIFT_CLIENT_IP_HEADER` | empty | Header to read the client IP from, e.g. `CF-Connecting-IP` |
 | `LAYERLIFT_ENABLE_DOCS` | false | Serve the API docs at `/api/docs` |
+| `LAYERLIFT_POCKETBASE_URL` | empty | PocketBase as LayerLift reaches it, e.g. `http://pocketbase:8090`; turns accounts on |
+| `LAYERLIFT_POCKETBASE_SUPERUSER_EMAIL` | empty | Superuser LayerLift signs in as |
+| `LAYERLIFT_POCKETBASE_SUPERUSER_PASSWORD` | empty | Its password |
+| `LAYERLIFT_POCKETBASE_DASHBOARD` | true | Proxy PocketBase's dashboard at `/pb/_/` |
+| `LAYERLIFT_JOB_RECORD_DAYS` | 14 | Job records without stored files are deleted after this |
+
+With accounts on, the rate, job, upload, image-size and timeout limits above are only the
+fallback. The tiers in PocketBase set them per visitor.
 
 ## Running it on the internet
 
@@ -137,12 +155,61 @@ and each build running at the same time adds about 250 MB. A build takes about
 11 seconds. Larger images need more, so the manifest's 3 GiB limit leaves headroom for
 the default 2 workers. Raise `LAYERLIFT_WORKERS` and the memory limit together.
 
+## Accounts (PocketBase)
+
+Accounts are optional. Set `LAYERLIFT_POCKETBASE_URL` (the compose file does) and LayerLift
+uses [PocketBase](https://pocketbase.io) for sign-in, per-account limits, live job records
+and saved builds. Without it, everyone is a guest with the limits from the environment,
+exactly as before.
+
+- **One origin.** LayerLift proxies PocketBase at `/pb`, including its realtime event stream
+  and its dashboard at `/pb/_/`. PocketBase needs no public port, CORS setup or ingress of its
+  own. Set `LAYERLIFT_POCKETBASE_DASHBOARD=false` to stop proxying the dashboard.
+- **Sign-in.** Email and password, with open sign-up. Google, GitHub and other providers
+  appear on the sign-in form as soon as you enable them in the PocketBase dashboard
+  (Collections > users > Options > OAuth2). Their redirect URL is
+  `https://<your host>/pb/api/oauth2-redirect`. Password reset and email verification need
+  SMTP, set in the dashboard under Settings > Mail.
+- **Tiers.** Limits live in the `tiers` collection and take effect within 30 seconds of an
+  edit in the dashboard. Each tier sets the analyses and builds allowed per minute, the jobs
+  at once, the upload size, the image size, the build timeout, and how long finished builds are
+  kept. `anonymous` applies to guests, `free` to accounts without a tier, and `supporter` is an
+  example to assign by hand (users > the account > tier). Signed-in accounts skip the
+  Turnstile check, and their limits count per account rather than per IP. The server-wide
+  `LAYERLIFT_MAX_QUEUE` and `LAYERLIFT_WORKERS` still cap everyone together.
+- **My builds.** Every analysis and build writes a `jobs` record with its stage and
+  progress, updated live. For accounts whose tier keeps builds, the finished preview, GLB,
+  3MF and STL zip are uploaded to the record. The owner can re-download them from
+  *My builds* until the record expires. Files are protected: only the owner, using a
+  short-lived token, can fetch them. Records without files (analyses, guests' builds) are
+  deleted after `LAYERLIFT_JOB_RECORD_DAYS`.
+- **Admin page** (`#/admin`, for accounts with `role = admin`, set in the dashboard) shows
+  workers, the queue and every running or waiting job with its account, IP and tier, all
+  updating live. It can cancel a build that is still waiting; a running build can only be
+  stopped by its timeout. The IP is a hidden field, which only superusers can read in
+  PocketBase.
+- **The schema** is in `deploy/pocketbase/pb_migrations/` and is applied on start. The
+  image's entrypoint also creates (or updates) the superuser LayerLift signs in with, from
+  `PB_SUPERUSER_EMAIL` and `PB_SUPERUSER_PASSWORD`. Back up the `pb_data` volume: it holds
+  the accounts and saved builds.
+
+If PocketBase is unreachable, LayerLift keeps working. Everyone gets the environment's
+limits, and job records are skipped (a warning is logged).
+
+Each release also publishes `<image>-pocketbase` (the `deploy/pocketbase` image) with the same
+version tag, so PocketBase's schema always matches the app. To run it on Kubernetes, give it one
+replica with `Recreate` and a volume at `/pb/pb_data`. Set `PB_SUPERUSER_EMAIL`,
+`PB_SUPERUSER_PASSWORD` and `PB_APP_URL` (e.g. `https://layerlift.example.com/pb`), then point
+LayerLift's three `LAYERLIFT_POCKETBASE_*` variables at its Service. The k3s manifests in
+`deploy/k8s` don't include it yet.
+
 ## Design choices
 
 - **Frontend:** plain React with local component state, and three.js without a wrapper.
 - **Saved palettes live in the browser** (`localStorage`). There is no server-side persistence.
-- **No authentication in the app.** It is meant for a private network. If you expose it,
-  `deploy/k8s/basic-auth.yaml` adds a Traefik basic-auth middleware.
+- **Accounts are optional** (PocketBase, above). Without them the app has no authentication.
+  To keep a private instance private, `deploy/k8s/basic-auth.yaml` adds a Traefik basic-auth
+  middleware.
 
 ## How the pipeline works
 

@@ -1,0 +1,47 @@
+# LayerLift with accounts: PocketBase (accounts, tiers, job records, saved builds) + LayerLift.
+#
+#   cp .env.example .env      # then set the superuser password (and a session secret)
+#   docker compose up -d --build
+#
+# Open http://localhost:8000. Create an account in the app, then make it an admin in the
+# PocketBase dashboard at http://localhost:8000/pb/_/ (sign in with PB_SUPERUSER_EMAIL):
+# Collections > users > your account > role = admin. Tiers (limits) are edited there too.
+name: layerlift
+
+services:
+  pocketbase:
+    build: deploy/pocketbase
+    image: layerlift-pocketbase:local
+    restart: unless-stopped
+    environment:
+      # Created (or updated) on every start; LayerLift signs in with it.
+      PB_SUPERUSER_EMAIL: ${PB_SUPERUSER_EMAIL:?set PB_SUPERUSER_EMAIL in .env}
+      PB_SUPERUSER_PASSWORD: ${PB_SUPERUSER_PASSWORD:?set PB_SUPERUSER_PASSWORD in .env}
+      # Public address of PocketBase (through LayerLift), for emails and OAuth2 redirects.
+      PB_APP_URL: ${PB_APP_URL:-http://localhost:${LAYERLIFT_PORT:-8000}/pb}
+    volumes:
+      - pb_data:/pb/pb_data
+    # No published port: browsers reach PocketBase through LayerLift at /pb.
+
+  layerlift:
+    build: .
+    image: layerlift:local
+    restart: unless-stopped
+    depends_on:
+      pocketbase:
+        condition: service_healthy
+    ports:
+      - "${LAYERLIFT_PORT:-8000}:8000"
+    environment:
+      LAYERLIFT_POCKETBASE_URL: http://pocketbase:8090
+      LAYERLIFT_POCKETBASE_SUPERUSER_EMAIL: ${PB_SUPERUSER_EMAIL}
+      LAYERLIFT_POCKETBASE_SUPERUSER_PASSWORD: ${PB_SUPERUSER_PASSWORD}
+      LAYERLIFT_POCKETBASE_DASHBOARD: ${LAYERLIFT_POCKETBASE_DASHBOARD:-true}
+      LAYERLIFT_SESSION_SECRET: ${LAYERLIFT_SESSION_SECRET:-}
+      LAYERLIFT_TURNSTILE_SITE_KEY: ${LAYERLIFT_TURNSTILE_SITE_KEY:-}
+      LAYERLIFT_TURNSTILE_SECRET_KEY: ${LAYERLIFT_TURNSTILE_SECRET_KEY:-}
+      LAYERLIFT_WORKERS: ${LAYERLIFT_WORKERS:-2}
+      LAYERLIFT_MAX_QUEUE: ${LAYERLIFT_MAX_QUEUE:-8}
+
+volumes:
+  pb_data:

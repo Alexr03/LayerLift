@@ -7,17 +7,25 @@ import {
   type BuildSettings,
   type BuildStatus,
   type Filament,
+  type Me,
   type RegionOverride,
   analyse,
   buildWithProgress,
   getConfig,
+  getMe,
   getSession,
   suggestMapping,
 } from './api'
+import { boot } from './bootstrap'
+import { pb } from './pb'
 import { fmt, loadCurrentPalette, storeCurrentPalette } from './palettes'
 import { type Edits, filamentOf, mergeAll, mergeOverride, withOverride } from './edits'
 import { makePlan } from './plan'
+import AccountMenu from './components/AccountMenu'
+import AdminPage from './components/AdminPage'
+import AuthDialog from './components/AuthDialog'
 import ColourList from './components/ColourList'
+import MyBuilds from './components/MyBuilds'
 import FilamentEditor from './components/FilamentEditor'
 import Footer from './components/Footer'
 import HumanCheck from './components/HumanCheck'
@@ -28,6 +36,7 @@ import RegionInspector from './components/RegionInspector'
 import Results from './components/Results'
 import SizeDepth from './components/SizeDepth'
 import SpeckCleanup from './components/SpeckCleanup'
+import Splash from './components/Splash'
 
 // three.js is large; load it only when the 3D view is first opened.
 const Viewer3D = lazy(() => import('./components/Viewer3D'))
@@ -36,7 +45,12 @@ type View = 'map' | 'original' | '3d' | 'relief'
 type Options = Omit<BuildSettings, 'analysis' | 'filaments' | 'mapping' | 'cluster_heights' | 'region_overrides'>
 
 const ACCEPT = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml']
-const MAX_MB = 10
+type Page = 'editor' | 'builds' | 'admin'
+
+function pageFromHash(): Page {
+  const h = window.location.hash
+  return h.startsWith('#/builds') ? 'builds' : h.startsWith('#/admin') ? 'admin' : 'editor'
+}
 
 const DEFAULT_OPTIONS: Options = {
   title: 'LayerLift relief',
@@ -78,11 +92,17 @@ export default function App() {
   const [view, setView] = useState<View>('map')
   const [explode, setExplode] = useState(0)
   const [dragging, setDragging] = useState(false)
-  const [version, setVersion] = useState<string | null>(null)
+  const [version, setVersion] = useState<string | null>(boot?.version ?? null)
+  const [me, setMe] = useState<Me | null>(null)
+  // The loading screen stays until the server has confirmed the account: nothing is guessed.
+  const [loading, setLoading] = useState<'loading' | 'error' | 'leaving' | 'done'>('loading')
+  const [loadAttempt, setLoadAttempt] = useState(0)
+  const [authOpen, setAuthOpen] = useState(false)
+  const [page, setPage] = useState<Page>(pageFromHash)
   const [gate, setGate] = useState<{ required: boolean; verified: boolean; siteKey: string | null }>({
     required: false,
     verified: true,
-    siteKey: null,
+    siteKey: boot?.turnstile_site_key ?? null,
   })
   const fileInput = useRef<HTMLInputElement>(null)
   const buildAbort = useRef<AbortController | null>(null)
@@ -105,13 +125,68 @@ export default function App() {
   // ---------------------------------------------------------------- human check
 
   useEffect(() => {
+    if (boot) return // the page already carried the version
     getConfig()
       .then((c) => setVersion(c.version))
       .catch(() => undefined)
-    getSession()
-      .then((s) => setGate({ required: s.required, verified: s.verified, siteKey: s.site_key }))
-      .catch(() => undefined)
   }, [])
+
+  // First load: the account, its limits and the human-check state, all from the server, before
+  // the loading screen lifts. A slow or unreachable server gets an error with a retry button.
+  useEffect(() => {
+    let alive = true
+    let timer: ReturnType<typeof setTimeout> | undefined
+    setLoading('loading')
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error('timeout')), 15_000)
+    })
+    Promise.race([Promise.all([getMe(), getSession()]), timeout])
+      .then(([m, s]) => {
+        if (!alive) return
+        setMe(m)
+        setGate({ required: s.required, verified: s.verified, siteKey: s.site_key })
+        setLoading('leaving')
+        timer = setTimeout(() => alive && setLoading('done'), 220) // after the fade
+      })
+      .catch(() => alive && setLoading('error'))
+    return () => {
+      alive = false
+      clearTimeout(timer)
+    }
+  }, [loadAttempt])
+
+  // Afterwards the account is re-read whenever the sign-in changes, and on every page change so
+  // a new role or tier shows without a reload.
+  useEffect(() => {
+    const refresh = () => {
+      getMe()
+        .then(setMe)
+        .catch(() => undefined)
+      getSession()
+        .then((s) => setGate({ required: s.required, verified: s.verified, siteKey: s.site_key }))
+        .catch(() => undefined)
+    }
+    // A stored sign-in may be stale (role or tier changed, account deleted): renew it once.
+    if (pb.authStore.isValid) {
+      pb.collection('users')
+        .authRefresh()
+        .catch((e) => e?.status === 401 && pb.authStore.clear())
+    }
+    const onHash = () => refresh()
+    window.addEventListener('hashchange', onHash)
+    const stop = pb.authStore.onChange(refresh)
+    return () => {
+      stop()
+      window.removeEventListener('hashchange', onHash)
+    }
+  }, [])
+
+  useEffect(() => {
+    const onHash = () => setPage(pageFromHash())
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
+  }, [])
+  const maxMb = me?.limits.max_upload_mb ?? 10
   const needsCheck = gate.required && !gate.verified
   const onVerified = useCallback(() => setGate((g) => ({ ...g, verified: true })), [])
 
@@ -160,8 +235,9 @@ export default function App() {
       setError('Use a PNG, JPEG, WebP or SVG image.')
       return
     }
-    if (f.size > MAX_MB * 1024 * 1024) {
-      setError(`That file is ${(f.size / 1024 / 1024).toFixed(1)} MB. The limit is ${MAX_MB} MB.`)
+    if (f.size > maxMb * 1024 * 1024) {
+      const more = me?.accounts && !me.user ? ' Sign in for larger uploads.' : ''
+      setError(`That file is ${(f.size / 1024 / 1024).toFixed(1)} MB. The limit is ${maxMb} MB.${more}`)
       return
     }
     if (imageUrl) URL.revokeObjectURL(imageUrl)
@@ -351,6 +427,7 @@ export default function App() {
   onKey.current = (e: KeyboardEvent) => {
     const t = e.target as HTMLElement | null
     if (t && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName))) return
+    if (page !== 'editor' || authOpen) return
     const mod = e.ctrlKey || e.metaKey
     if (mod && e.key.toLowerCase() === 'z') {
       e.preventDefault()
@@ -399,6 +476,7 @@ export default function App() {
 
   return (
     <div className="app">
+      {loading !== 'done' && <Splash state={loading === 'leaving' ? 'leaving' : loading} onRetry={() => setLoadAttempt((n) => n + 1)} />}
       <header className="topbar">
         <svg className="mark" viewBox="0 0 32 32" aria-hidden>
           <rect x="4" y="22" width="24" height="5" rx="1" fill="#1F2328" />
@@ -408,6 +486,7 @@ export default function App() {
         </svg>
         <h1>LayerLift</h1>
         <p>Flat-colour artwork in, multi-colour relief out, sliced by colour for your AMS.</p>
+        {me && <AccountMenu me={me} onSignIn={() => setAuthOpen(true)} />}
       </header>
 
       {error && (
@@ -419,7 +498,10 @@ export default function App() {
         </div>
       )}
 
-      <main className="workspace">
+      {me && <AuthDialog open={authOpen} onClose={() => setAuthOpen(false)} />}
+      {page === 'builds' && me && <MyBuilds me={me} onSignIn={() => setAuthOpen(true)} />}
+      {page === 'admin' && me && <AdminPage me={me} />}
+      <main className="workspace" hidden={page !== 'editor'}>
         <aside className="col setup">
           <section className="panel" aria-labelledby="image-h">
             <div className="panel-head">
@@ -443,7 +525,7 @@ export default function App() {
                 </div>
               </div>
             ) : (
-              <p className="hint">PNG, JPEG, WebP or SVG up to {MAX_MB} MB. Logos, badges and icons with flat colours work best.</p>
+              <p className="hint">PNG, JPEG, WebP or SVG up to {maxMb} MB. Logos, badges and icons with flat colours work best.</p>
             )}
             {needsCheck && analysis && gate.siteKey && <HumanCheck siteKey={gate.siteKey} onVerified={onVerified} />}
             <div className="row wrap">

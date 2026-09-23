@@ -42,6 +42,10 @@ class WorkerPool:
             self._pool.submit(_warm)
 
     @property
+    def size(self) -> int:
+        return self._workers
+
+    @property
     def busy(self) -> int:
         return self._workers - self._sem._value  # noqa: SLF001 - informational only
 

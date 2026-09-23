@@ -191,7 +191,45 @@ def test_background_build_reports_errors(client):
     assert client.get("/api/jobs/0123456789abcdef01234567/status").status_code == 404
 
 
+@pytest.fixture
+def built_frontend(monkeypatch, tmp_path):
+    (tmp_path / "assets").mkdir()
+    (tmp_path / "index.html").write_text("<html><head><title>LayerLift</title></head><body></body></html>")
+    (tmp_path / "assets" / "index-abc123.js").write_text("console.log('layerlift');\n" * 400)
+    monkeypatch.setattr(get_settings(), "static_dir", tmp_path)
+    return tmp_path
+
+
+def _startup_block(html: str) -> str:
+    return html.split('<script id="ll-bootstrap" type="application/json">')[1].split("</script>")[0]
+
+
+def test_page_carries_startup_data_and_assets_are_cached(client, built_frontend):
+    page = client.get("/some/deep/link")
+    assert page.headers["cache-control"] == "no-cache"
+    data = json.loads(_startup_block(page.text))
+    assert data["version"] and data["turnstile_site_key"] is None
+    assert "Content-Security-Policy" in page.headers  # a JSON block is data, so script-src 'self' still holds
+
+    asset = client.get("/assets/index-abc123.js", headers={"Accept-Encoding": "gzip"})
+    assert asset.headers["cache-control"] == "public, max-age=31536000, immutable"
+    assert asset.headers["content-encoding"] == "gzip"
+
+
+def test_startup_block_cannot_be_closed_early(client, built_frontend, monkeypatch):
+    import app.main as main
+
+    async def hostile():
+        return {"label": "</script><img src=x onerror=alert(1)>"}
+
+    monkeypatch.setattr(main, "_bootstrap", hostile)
+    page = client.get("/")
+    assert json.loads(_startup_block(page.text)) == {"label": "</script><img src=x onerror=alert(1)>"}
+    assert "<img" not in page.text.split("</script>", 1)[1]
+
+
 # Keep last: this starts a second app lifespan, which replaces the shared app state.
+
 def test_timeout_kills_the_job(monkeypatch):
     monkeypatch.setenv("LAYERLIFT_JOB_TIMEOUT_SECONDS", "1")
     monkeypatch.setenv("LAYERLIFT_WORKERS", "1")

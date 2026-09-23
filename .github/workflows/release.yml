@@ -3,7 +3,8 @@
 # Every push to master that changes code produces a new release:
 #   1. backend tests + frontend build/lint
 #   2. next version computed from the latest vX.Y.Z tag (see "Versioning" in README.md)
-#   3. image pushed to Docker Hub with the version tags
+#   3. images pushed to Docker Hub with the version tags: LayerLift, and PocketBase with
+#      LayerLift's schema (<image>-pocketbase), so the two always carry the same version
 #   4. git tag + GitHub release created (only after the image push succeeds)
 #
 # Required repository secrets: DOCKERHUB_USERNAME, DOCKERHUB_TOKEN.
@@ -16,7 +17,9 @@ on:
     branches: [master]
     paths-ignore:
       - '**.md'
-      - 'deploy/**'
+      - 'deploy/k8s/**'
+      - 'docker-compose.yml'
+      - '.env.example'
   workflow_dispatch:
     inputs:
       bump:
@@ -77,6 +80,7 @@ jobs:
       contents: write # create the tag and GitHub release
     env:
       IMAGE: ${{ vars.DOCKERHUB_REPOSITORY || format('{0}/layerlift', secrets.DOCKERHUB_USERNAME) }}
+      PB_IMAGE: ${{ vars.DOCKERHUB_REPOSITORY || format('{0}/layerlift', secrets.DOCKERHUB_USERNAME) }}-pocketbase
     steps:
       - uses: actions/checkout@v7
         with:
@@ -152,11 +156,15 @@ jobs:
             tags="$tags,$IMAGE:$major.$minor,$IMAGE:$major,$IMAGE:latest"
           fi
 
+          pb_tags="${tags//$IMAGE:/$PB_IMAGE:}"
+
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "prerelease=$([ -n "$label" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
           echo "tags=$tags" >> "$GITHUB_OUTPUT"
+          echo "pb_tags=$pb_tags" >> "$GITHUB_OUTPUT"
           echo "### LayerLift $version" >> "$GITHUB_STEP_SUMMARY"
           echo "Image tags: \`${tags//,/\`, \`}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "PocketBase tags: \`${pb_tags//,/\`, \`}\`" >> "$GITHUB_STEP_SUMMARY"
 
       - uses: docker/setup-buildx-action@v4
 
@@ -179,6 +187,19 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Build and push PocketBase
+        uses: docker/build-push-action@v7
+        with:
+          context: deploy/pocketbase
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.version.outputs.pb_tags }}
+          labels: |
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=pocketbase
+          cache-to: type=gha,mode=max,scope=pocketbase
+
       - name: Tag and create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -188,4 +209,4 @@ jobs:
           flags=(--target "$GITHUB_SHA" --title "v$VERSION" --generate-notes)
           if [ "$PRERELEASE" = "true" ]; then flags+=(--prerelease); fi
           gh release create "v$VERSION" "${flags[@]}" \
-            --notes "Docker image: \`$IMAGE:$VERSION\`"
+            --notes "Docker images: \`$IMAGE:$VERSION\`, \`$PB_IMAGE:$VERSION\`"

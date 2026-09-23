@@ -50,6 +50,18 @@ class Settings(BaseSettings):
     # Replaces uvicorn's access log, which only sees the proxy's address behind Cloudflare.
     access_log: bool = True
 
+    # --- accounts (optional) ------------------------------------------------------------
+    # PocketBase, as LayerLift reaches it (e.g. http://pocketbase:8090). Empty = no accounts.
+    # Browsers reach it through LayerLift at /pb, so it needn't be public.
+    pocketbase_url: str = ""
+    # The superuser LayerLift signs in as (created by deploy/pocketbase/entrypoint.sh).
+    pocketbase_superuser_email: str = ""
+    pocketbase_superuser_password: str = ""
+    # Proxy PocketBase's own dashboard at /pb/_/ (it has its own superuser login).
+    pocketbase_dashboard: bool = True
+    # Job records without stored files (analyses, guests' builds) are deleted after this many days.
+    job_record_days: int = 14
+
     @property
     def turnstile_enabled(self) -> bool:
         return bool(self.turnstile_site_key and self.turnstile_secret_key)

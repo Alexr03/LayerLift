@@ -7,3 +7,4 @@ backend/tests/fixtures
 deploy
 *.md
 .git
+.env

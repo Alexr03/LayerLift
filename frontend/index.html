@@ -6,8 +6,94 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>LayerLift</title>
     <meta name="description" content="Turn a flat-colour logo into a multi-colour 3D-printable relief." />
+    <!-- The loading screen is plain HTML and CSS so it shows before any script has loaded.
+         The app takes it over (components/Splash.tsx, same markup) and removes it once the
+         server has confirmed who is signed in. Keep the two in step. -->
+    <style>
+      .splash {
+        position: fixed;
+        inset: 0;
+        z-index: 1000;
+        display: grid;
+        place-content: center;
+        justify-items: center;
+        gap: 0.9rem;
+        background: #e4e7ea;
+        color: #1f2328;
+        font-family: 'Barlow', system-ui, sans-serif;
+        transition: opacity 0.2s ease;
+      }
+      .splash.leaving {
+        opacity: 0;
+        pointer-events: none;
+      }
+      .splash-mark {
+        width: 72px;
+        height: 72px;
+      }
+      .splash-mark rect {
+        transform-box: fill-box;
+        transform-origin: 50% 100%;
+        animation: splash-layer 1.8s ease-in-out infinite;
+      }
+      .splash-mark .l1 { fill: #1f2328; }
+      .splash-mark .l2 { fill: #2f5d8c; animation-delay: 0.15s; }
+      .splash-mark .l3 { fill: #c7962f; animation-delay: 0.3s; }
+      .splash-mark .l4 { fill: #f2f2ee; stroke: #1f2328; animation-delay: 0.45s; }
+      @keyframes splash-layer {
+        0% { transform: scaleY(0); opacity: 0; }
+        25%, 75% { transform: scaleY(1); opacity: 1; }
+        100% { transform: scaleY(1); opacity: 0; }
+      }
+      .splash-name {
+        font-family: 'Barlow Condensed', 'Barlow', system-ui, sans-serif;
+        font-weight: 600;
+        font-size: 1.9rem;
+        letter-spacing: 0.01em;
+      }
+      .splash-note {
+        margin: 0;
+        color: #59616a;
+        font-size: 0.95rem;
+        min-height: 1.4em;
+        text-align: center;
+      }
+      .splash-retry {
+        font: inherit;
+        font-weight: 500;
+        padding: 0.45rem 1rem;
+        border-radius: 4px;
+        border: 1px solid #1f2328;
+        background: #1f2328;
+        color: #f6f7f8;
+        cursor: pointer;
+      }
+      @media (prefers-color-scheme: dark) {
+        .splash { background: #1b1e22; color: #e8eaed; }
+        .splash-mark .l1 { fill: #e8eaed; }
+        .splash-mark .l2 { fill: #7fb0e0; }
+        .splash-mark .l4 { stroke: #e8eaed; }
+        .splash-note { color: #a3abb4; }
+        .splash-retry { background: #e8eaed; color: #1b1e22; border-color: #e8eaed; }
+      }
+      /* Still when something went wrong or motion is unwelcome: movement says "loading". */
+      .splash.splash-failed .splash-mark rect { animation: none; }
+      @media (prefers-reduced-motion: reduce) {
+        .splash-mark rect { animation: none; }
+      }
+    </style>
   </head>
   <body>
+    <div id="splash" class="splash" role="status" aria-live="polite">
+      <svg class="splash-mark" viewBox="0 0 32 32" aria-hidden="true">
+        <rect class="l1" x="4" y="22" width="24" height="5" rx="1" />
+        <rect class="l2" x="8" y="16" width="16" height="5" rx="1" />
+        <rect class="l3" x="12" y="10" width="8" height="5" rx="1" />
+        <rect class="l4" x="14" y="5" width="4" height="4" rx="1" />
+      </svg>
+      <div class="splash-name">LayerLift</div>
+      <p class="splash-note">Loading…</p>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

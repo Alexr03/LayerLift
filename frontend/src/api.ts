@@ -1,5 +1,7 @@
 // Typed client for the LayerLift API.
 
+import { authHeaders } from './pb'
+
 export interface Filament {
   name: string
   hex: string
@@ -119,6 +121,7 @@ export interface BuildResult {
   layers: LayerStats[]
   warnings: BuildWarning[]
   elapsed_s: number
+  saved_until?: string | null // signed in: the copy in My builds is kept until then
 }
 
 export class ApiError extends Error {
@@ -153,7 +156,7 @@ export async function analyse(file: File, options: AnalysisOptions, filaments: F
   form.append('file', file)
   form.append('options', JSON.stringify(options))
   form.append('filaments', JSON.stringify(filaments))
-  return handle<Analysis>(await fetch('/api/analyse', { method: 'POST', body: form }))
+  return handle<Analysis>(await fetch('/api/analyse', { method: 'POST', body: form, headers: authHeaders() }))
 }
 
 export async function suggestMapping(
@@ -163,7 +166,7 @@ export async function suggestMapping(
 ): Promise<number[]> {
   const res = await fetch('/api/map', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify({
       clusters: analysis.clusters.map((c) => ({ hex: c.hex, share: c.share })),
       adjacency: analysis.adjacency,
@@ -178,11 +181,65 @@ export async function build(file: File, settings: BuildSettings, signal?: AbortS
   const form = new FormData()
   form.append('file', file)
   form.append('settings', JSON.stringify(settings))
-  return handle<BuildResult>(await fetch('/api/build', { method: 'POST', body: form, signal }))
+  return handle<BuildResult>(await fetch('/api/build', { method: 'POST', body: form, signal, headers: authHeaders() }))
 }
 
-export async function getConfig(): Promise<{ max_upload_mb: number; version: string }> {
+export async function getConfig(): Promise<{ max_upload_mb: number; version: string; accounts: boolean }> {
   return handle(await fetch('/api/config'))
+}
+
+export interface Limits {
+  tier: string
+  label: string
+  rate_limit_per_minute: number
+  max_jobs: number
+  max_upload_mb: number
+  max_image_side: number
+  job_timeout_seconds: number
+  retention_hours: number
+}
+
+export interface Me {
+  accounts: boolean
+  user: { id: string; email: string; name: string; role: string; verified: boolean } | null
+  limits: Limits
+}
+
+/** Who the server thinks is signed in, and the limits that apply. */
+export async function getMe(): Promise<Me> {
+  return handle<Me>(await fetch('/api/me', { headers: authHeaders() }))
+}
+
+export interface AdminJob {
+  job_id: string
+  record_id: string
+  kind: 'analyse' | 'build'
+  state: 'running' | 'queued'
+  position: number | null
+  age_s: number
+  cancellable: boolean
+  ip: string
+  user: string | null
+  tier: string
+  title: string
+}
+
+export interface AdminStatus {
+  version: string
+  workers: number
+  busy_workers: number
+  capacity: number
+  running: number
+  waiting: number
+  jobs: AdminJob[]
+}
+
+export async function getAdminStatus(): Promise<AdminStatus> {
+  return handle<AdminStatus>(await fetch('/api/admin/status', { headers: authHeaders() }))
+}
+
+export async function cancelJob(jobId: string): Promise<void> {
+  await handle(await fetch(`/api/admin/jobs/${jobId}/cancel`, { method: 'POST', headers: authHeaders() }))
 }
 
 export interface BuildStatus {
@@ -216,7 +273,9 @@ export async function buildWithProgress(
   const form = new FormData()
   form.append('file', file)
   form.append('settings', JSON.stringify(settings))
-  const started = await handle<{ job_id: string; status_url: string }>(await fetch('/api/builds', { method: 'POST', body: form, signal }))
+  const started = await handle<{ job_id: string; status_url: string }>(
+    await fetch('/api/builds', { method: 'POST', body: form, signal, headers: authHeaders() }),
+  )
   for (;;) {
     await sleep(350, signal)
     const s = await handle<BuildStatus>(await fetch(started.status_url, { signal }))
@@ -233,7 +292,7 @@ export interface SessionState {
 }
 
 export async function getSession(): Promise<SessionState> {
-  return handle<SessionState>(await fetch('/api/session'))
+  return handle<SessionState>(await fetch('/api/session', { headers: authHeaders() }))
 }
 
 /** Exchange a Turnstile token for a session cookie. */

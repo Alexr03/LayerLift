@@ -91,14 +91,16 @@ class RateLimiter:
         self.per_minute = per_minute
         self.hits: dict[str, deque] = {}
 
-    def check(self, key: str) -> None:
-        if self.per_minute <= 0:
+    def check(self, key: str, per_minute: int | None = None) -> None:
+        """Count one request for ``key``; ``per_minute`` overrides the default allowance."""
+        per_minute = self.per_minute if per_minute is None else per_minute
+        if per_minute <= 0:
             return
         now = time.monotonic()
         q = self.hits.setdefault(key, deque())
         while q and q[0] <= now - 60:
             q.popleft()
-        if len(q) >= self.per_minute:
+        if len(q) >= per_minute:
             wait = int(60 - (now - q[0])) + 1
             raise Rejected(429, "rate_limited", f"Too many requests. Try again in {wait} s.", retry_after=wait)
         q.append(now)
@@ -116,6 +118,7 @@ class _Job:
     kind: str
     started: bool = False
     admitted_at: float = field(default_factory=time.monotonic)
+    info: dict = field(default_factory=dict)  # shown on the admin page: ip, user, title
 
 
 class JobQueue:
@@ -132,17 +135,18 @@ class JobQueue:
         self.per_client = max(1, per_client)
         self.jobs: OrderedDict[str, _Job] = OrderedDict()
 
-    def admit(self, job_id: str, client: str, kind: str) -> None:
+    def admit(self, job_id: str, client: str, kind: str, per_client: int | None = None, info: dict | None = None) -> None:
+        """Accept a job or raise Rejected. ``per_client`` overrides the default share (tiers)."""
         if len(self.jobs) >= self.capacity:
             raise Rejected(503, "busy", "LayerLift is busy right now. Try again in a minute.", retry_after=30)
-        if sum(1 for j in self.jobs.values() if j.client == client) >= self.per_client:
+        if sum(1 for j in self.jobs.values() if j.client == client) >= max(1, per_client or self.per_client):
             raise Rejected(
                 429,
                 "too_many_jobs",
                 "You already have work running. Wait for it to finish, then try again.",
                 retry_after=10,
             )
-        self.jobs[job_id] = _Job(client, kind)
+        self.jobs[job_id] = _Job(client, kind, info=info or {})
 
     def started(self, job_id: str) -> None:
         job = self.jobs.get(job_id)
