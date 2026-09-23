@@ -14,7 +14,8 @@ import {
   getSession,
   suggestMapping,
 } from './api'
-import { loadCurrentPalette, storeCurrentPalette } from './palettes'
+import { fmt, loadCurrentPalette, storeCurrentPalette } from './palettes'
+import { type Edits, filamentOf, mergeAll, mergeOverride, withOverride } from './edits'
 import { makePlan } from './plan'
 import ColourList from './components/ColourList'
 import FilamentEditor from './components/FilamentEditor'
@@ -26,6 +27,7 @@ import ProgressCard from './components/ProgressCard'
 import RegionInspector from './components/RegionInspector'
 import Results from './components/Results'
 import SizeDepth from './components/SizeDepth'
+import SpeckCleanup from './components/SpeckCleanup'
 
 // three.js is large; load it only when the 3D view is first opened.
 const Viewer3D = lazy(() => import('./components/Viewer3D'))
@@ -65,7 +67,9 @@ export default function App() {
   const [regionOverrides, setRegionOverrides] = useState<Record<number, RegionOverride>>({})
   const [clusterHeights, setClusterHeights] = useState<Record<number, number>>({})
   const [options, setOptions] = useState<Options>(DEFAULT_OPTIONS)
-  const [selected, setSelected] = useState<number | null>(null)
+  const [selected, setSelected] = useState<number[]>([])
+  const [history, setHistory] = useState<{ past: Edits[]; future: Edits[] }>({ past: [], future: [] })
+  const lastRecord = useRef<{ key: string; at: number } | null>(null)
   const [busy, setBusy] = useState<'analysing' | 'building' | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<BuildResult | null>(null)
@@ -133,7 +137,8 @@ export default function App() {
         setLocked({})
         setRegionOverrides({})
         setClusterHeights({})
-        setSelected(null)
+        setSelected([])
+        setHistory({ past: [], future: [] })
         setResult(null)
         setView('map')
       } catch (e) {
@@ -195,12 +200,53 @@ export default function App() {
         Object.fromEntries(Object.entries(ro).map(([r, o]) => [r, { ...o, filament: o.filament == null ? null : fix(o.filament) }])),
       )
       setOptions((o) => ({ ...o, base_filament: fix(o.base_filament) }))
+      setHistory({ past: [], future: [] })
     }
     setFilaments(next)
     storeCurrentPalette(next)
   }
 
+  // ---------------------------------------------------------------- edits + undo
+
+  const snapshot = (): Edits => ({ mapping, locked, regionOverrides, clusterHeights })
+
+  /**
+   * Save the current edits before changing them. Calls with the same ``key`` less than a second apart
+   * (typing a height, say) share one undo step.
+   */
+  const record = (key = '') => {
+    const now = Date.now()
+    const last = lastRecord.current
+    lastRecord.current = { key, at: now }
+    if (key && last?.key === key && now - last.at < 1000) return
+    const current = snapshot()
+    setHistory((h) => ({ past: [...h.past.slice(-99), current], future: [] }))
+  }
+
+  const restore = (e: Edits) => {
+    setMapping(e.mapping)
+    setLocked(e.locked)
+    setRegionOverrides(e.regionOverrides)
+    setClusterHeights(e.clusterHeights)
+    lastRecord.current = null
+  }
+
+  const undo = () => {
+    const prev = history.past[history.past.length - 1]
+    if (!prev) return
+    setHistory({ past: history.past.slice(0, -1), future: [snapshot(), ...history.future] })
+    restore(prev)
+  }
+
+  const redo = () => {
+    const next = history.future[0]
+    if (!next) return
+    setHistory({ past: [...history.past, snapshot()], future: history.future.slice(1) })
+    restore(next)
+  }
+
   const assignCluster = (cluster: number, fil: number | null) => {
+    record()
     setLocked((l) => {
       const next = { ...l }
       if (fil == null) delete next[cluster]
@@ -210,13 +256,24 @@ export default function App() {
     if (fil != null) setMapping((m) => m.map((v, i) => (i === cluster ? fil : v)))
   }
 
-  const setRegion = (region: number, o: RegionOverride | null) =>
-    setRegionOverrides((ro) => {
-      const next = { ...ro }
-      if (!o || (o.filament == null && o.height_mm == null)) delete next[region]
-      else next[region] = o
-      return next
-    })
+  /** Change the same fields on several regions. */
+  const updateRegions = (regions: number[], patch: RegionOverride, key = '') => {
+    record(key)
+    setRegionOverrides((ro) => regions.reduce((acc, id) => withOverride(acc, id, { ...acc[id], ...patch }), ro))
+  }
+
+  /** Leave areas out of the print (or put them back). */
+  const setRemoved = (regions: number[], removed: boolean) => updateRegions(regions, { removed })
+
+  const filamentHeight = (fil: number) => plan?.baseHeights[fil] ?? 0
+
+  const mergeRegions = (regions: number[]) => {
+    if (!analysis) return
+    record()
+    setRegionOverrides((ro) => mergeAll(analysis, mapping, ro, clusterHeights, filamentHeight, regions))
+  }
+
+  const removedCount = useMemo(() => Object.values(regionOverrides).filter((o) => o.removed).length, [regionOverrides])
 
   const setClusterFilament = (cluster: number, fil: number) => {
     assignCluster(cluster, fil)
@@ -225,23 +282,35 @@ export default function App() {
       for (const [k, o] of Object.entries(ro)) {
         const r = analysis!.regions[Number(k)]
         const cleared = r.cluster === cluster ? { ...o, filament: null } : o
-        if (cleared.filament != null || cleared.height_mm != null) next[Number(k)] = cleared
+        if (cleared.filament != null || cleared.height_mm != null || cleared.removed) next[Number(k)] = cleared
       }
       return next
     })
   }
 
-  const setClusterHeight = (cluster: number, h: number | null) =>
+  const setClusterHeight = (cluster: number, h: number | null) => {
+    record(`cluster-height-${cluster}`)
     setClusterHeights((ch) => {
       const next = { ...ch }
       if (h == null) delete next[cluster]
       else next[cluster] = h
       return next
     })
+  }
+
+  /** Click on the map: select one region, or with a modifier add/remove it from the selection. */
+  const selectRegion = (id: number | null, additive: boolean) =>
+    setSelected((cur) => {
+      if (id == null) return additive ? cur : []
+      if (!additive) return [id]
+      return cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]
+    })
 
   const regionColours = useMemo(() => {
     if (!analysis) return []
-    return analysis.regions.map((r) => filaments[regionOverrides[r.id]?.filament ?? mapping[r.cluster]]?.hex ?? '#FF00FF')
+    return analysis.regions.map((r) =>
+      regionOverrides[r.id]?.removed ? null : (filaments[regionOverrides[r.id]?.filament ?? mapping[r.cluster]]?.hex ?? '#FF00FF'),
+    )
   }, [analysis, filaments, mapping, regionOverrides])
 
   // ---------------------------------------------------------------- build
@@ -272,7 +341,59 @@ export default function App() {
   }
 
   const usedFilaments = useMemo(() => filaments.map((_, i) => (plan ? plan.bands.some((b) => b.filament === i) : true)), [filaments, plan])
-  const selectedRegion = selected != null && analysis ? analysis.regions[selected] : null
+  const selectedIds = analysis ? selected.filter((id) => id < analysis.regions.length) : []
+  const canMerge =
+    analysis != null && selectedIds.some((id) => mergeOverride(analysis, mapping, regionOverrides, clusterHeights, filamentHeight, id) != null)
+
+  // Keyboard: Escape clears the selection, Delete/Backspace removes (or restores) it, Ctrl+Z / Ctrl+Y undo and redo.
+  // The listener is registered once and calls the latest handlers through a ref.
+  const onKey = useRef<(e: KeyboardEvent) => void>(() => undefined)
+  onKey.current = (e: KeyboardEvent) => {
+    const t = e.target as HTMLElement | null
+    if (t && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName))) return
+    const mod = e.ctrlKey || e.metaKey
+    if (mod && e.key.toLowerCase() === 'z') {
+      e.preventDefault()
+      if (e.shiftKey) redo()
+      else undo()
+    } else if (mod && e.key.toLowerCase() === 'y') {
+      e.preventDefault()
+      redo()
+    } else if (e.key === 'Escape') setSelected([])
+    else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedIds.length && view === 'map') {
+      e.preventDefault()
+      setRemoved(selectedIds, !selectedIds.every((id) => regionOverrides[id]?.removed))
+    }
+  }
+  useEffect(() => {
+    const listener = (e: KeyboardEvent) => onKey.current(e)
+    window.addEventListener('keydown', listener)
+    return () => window.removeEventListener('keydown', listener)
+  }, [])
+
+  const regionTooltip = (id: number) => {
+    const r = analysis!.regions[id]
+    const o = regionOverrides[id]
+    const fil = filaments[o?.filament ?? mapping[r.cluster]]
+    const mm2 = r.area * (plan?.mmPerPx ?? 0) ** 2
+    const top = plan?.regionTop[id]
+    return (
+      <>
+        <strong>
+          {o?.removed ? (
+            'Removed'
+          ) : (
+            <>
+              <i className="chip" style={{ background: fil?.hex }} /> {fil?.name ?? 'No filament'}
+            </>
+          )}
+        </strong>
+        {!o?.removed && top != null && <span>Top at {fmt(top)} mm</span>}
+        <span>{mm2 >= 0.05 ? `About ${fmt(mm2)} mm²` : `${r.area.toLocaleString()} px`}</span>
+        {o?.filament != null && !o.removed && <span>Own filament, not the colour's</span>}
+      </>
+    )
+  }
 
   // ---------------------------------------------------------------- render
 
@@ -417,6 +538,16 @@ export default function App() {
                 {label}
               </button>
             ))}
+            {analysis && (view === 'map' || view === 'original') && (
+              <span className="undo-redo">
+                <button type="button" className="ghost" onClick={undo} disabled={!history.past.length} title="Undo (Ctrl+Z)">
+                  ↶ Undo
+                </button>
+                <button type="button" className="ghost" onClick={redo} disabled={!history.future.length} title="Redo (Ctrl+Y)">
+                  ↷ Redo
+                </button>
+              </span>
+            )}
             {view === '3d' && result && (
               <label className="explode">
                 <span>Separate layers</span>
@@ -427,6 +558,7 @@ export default function App() {
 
           <div
             className={dragging ? 'canvas-area dragging' : 'canvas-area'}
+            onClick={(e) => e.target === e.currentTarget && setSelected([])}
             onDragOver={(e) => {
               e.preventDefault()
               setDragging(true)
@@ -483,8 +615,9 @@ export default function App() {
                 analysis={analysis}
                 imageUrl={imageUrl}
                 regionColours={regionColours}
-                selected={selected}
-                onSelect={setSelected}
+                selected={selectedIds}
+                onSelect={selectRegion}
+                tooltip={regionTooltip}
                 showOriginal={view === 'original'}
               />
             )}
@@ -500,7 +633,16 @@ export default function App() {
             <p className="hint">
               {analysis
                 ? view === 'map'
-                  ? 'Click any area to give it its own filament or height.'
+                  ? removedCount
+                    ? (
+                        <>
+                          {removedCount === 1 ? '1 area removed.' : `${removedCount} areas removed.`}{' '}
+                          <button type="button" className="link" onClick={() => setRemoved(Object.keys(regionOverrides).map(Number), false)}>
+                            Restore all
+                          </button>
+                        </>
+                      )
+                    : 'Click an area to change it or remove it; shift-click to select several.'
                   : result
                     ? `Built in ${result.elapsed_s.toFixed(1)} s.`
                     : 'Build to see the 3D model.'
@@ -513,21 +655,29 @@ export default function App() {
         </section>
 
         <aside className="col info">
-          {analysis && selectedRegion && (
+          {analysis && selectedIds.length > 0 && (
             <RegionInspector
               analysis={analysis}
-              region={selectedRegion.id}
+              regions={selectedIds}
               filaments={filaments}
               mapping={mapping}
-              override={regionOverrides[selectedRegion.id]}
-              clusterHeight={clusterHeights[selectedRegion.cluster]}
-              plannedHeight={plan?.heights[regionOverrides[selectedRegion.id]?.filament ?? mapping[selectedRegion.cluster]] ?? 0}
+              overrides={regionOverrides}
+              clusterHeights={clusterHeights}
+              regionTop={plan?.regionTop ?? []}
+              mmPerPx={plan?.mmPerPx ?? 0}
               heightsLocked={options.strategy === 'stacked'}
+              canMerge={canMerge}
               layer={options.layer_mm}
-              onRegion={(o) => setRegion(selectedRegion.id, o)}
-              onClusterFilament={(fil) => setClusterFilament(selectedRegion.cluster, fil)}
-              onClusterHeight={(h) => setClusterHeight(selectedRegion.cluster, h)}
-              onClose={() => setSelected(null)}
+              onFilament={(fil) => updateRegions(selectedIds, { filament: fil })}
+              onHeight={(h) => updateRegions(selectedIds, { height_mm: h }, `height-${selectedIds.join(',')}`)}
+              onClusterFilament={(fil) => setClusterFilament(analysis.regions[selectedIds[0]].cluster, fil)}
+              onClusterHeight={(h) => setClusterHeight(analysis.regions[selectedIds[0]].cluster, h)}
+              onRemove={(removed, wholeColour) => {
+                const cluster = analysis.regions[selectedIds[0]].cluster
+                setRemoved(wholeColour ? analysis.regions.filter((r) => r.cluster === cluster).map((r) => r.id) : selectedIds, removed)
+              }}
+              onMerge={() => mergeRegions(selectedIds)}
+              onClose={() => setSelected([])}
             />
           )}
           {result && <Results result={result} stale={stale} />}
@@ -543,6 +693,23 @@ export default function App() {
             />
           )}
           {analysis && <ColourList analysis={analysis} filaments={filaments} mapping={mapping} locked={locked} onAssign={assignCluster} />}
+          {analysis && plan && (
+            <SpeckCleanup
+              analysis={analysis}
+              overrides={regionOverrides}
+              mmPerPx={plan.mmPerPx}
+              standsOut={(id) => {
+                const o = mergeOverride(analysis, mapping, regionOverrides, clusterHeights, filamentHeight, id)
+                return o != null && o.filament !== filamentOf(analysis, mapping, regionOverrides, id)
+              }}
+              onSelect={(ids) => {
+                setSelected(ids)
+                setView('map')
+              }}
+              onMerge={mergeRegions}
+              onRemove={(ids) => setRemoved(ids, true)}
+            />
+          )}
           {!analysis && (
             <section className="panel quiet">
               <h2>How it works</h2>

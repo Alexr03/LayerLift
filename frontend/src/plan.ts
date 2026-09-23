@@ -15,6 +15,24 @@ export interface Plan {
   top: number
   changes: number
   heights: number[]
+  baseHeights: number[] // per filament before the strategy reshapes them (what an explicit height means)
+  regionTop: (number | null)[] // per region id, null = removed
+  mmPerPx: number // print scale of one source pixel
+}
+
+/** Millimetres per source pixel, from the kept regions' extent (the backend sizes the traced outline). */
+export function mmPerPx(analysis: Analysis, s: BuildSettings, kept: boolean[]): number {
+  let [x0, y0, x1, y1] = [Infinity, Infinity, -Infinity, -Infinity]
+  analysis.regions.forEach((r, i) => {
+    if (!kept[i]) return
+    x0 = Math.min(x0, r.bbox[0])
+    y0 = Math.min(y0, r.bbox[1])
+    x1 = Math.max(x1, r.bbox[0] + r.bbox[2])
+    y1 = Math.max(y1, r.bbox[1] + r.bbox[3])
+  })
+  if (!(x1 > x0)) return 0
+  const dims = { width: x1 - x0, height: y1 - y0, longest: Math.max(x1 - x0, y1 - y0) }
+  return s.width_mm / dims[s.size_mode]
 }
 
 export function effectiveFilaments(analysis: Analysis, mapping: number[], settings: BuildSettings): number[] {
@@ -65,21 +83,26 @@ export function stackBands(used: number[], heights: number[], baseFilament: numb
 export function makePlan(analysis: Analysis, mapping: number[], s: BuildSettings): Plan {
   const { filaments, layer_mm: layer } = s
   const regionFil = effectiveFilaments(analysis, mapping, s)
+  const kept = analysis.regions.map((r) => !s.region_overrides[r.id]?.removed)
   const area = new Array(filaments.length).fill(0)
-  analysis.regions.forEach((r, i) => (area[regionFil[i]] += r.area))
+  analysis.regions.forEach((r, i) => kept[i] && (area[regionFil[i]] += r.area))
   const used = filaments.map((_, i) => i).filter((i) => area[i] > 0)
   const base = snap(s.base_mm, layer)
   const explicitBase = s.base_filament != null && s.base_filament < filaments.length ? s.base_filament : null
   let heights = filamentHeights(filaments, used, s)
+  const baseHeights = heights
+  const scale = mmPerPx(analysis, s, kept)
+  const regionTop: (number | null)[] = analysis.regions.map(() => null)
 
   if (s.strategy === 'stacked') {
     // One band per filament; per-colour and per-area heights don't apply.
-    if (!used.length) return { bands: [], baseFilament: null, top: 0, changes: 0, heights }
+    if (!used.length) return { bands: [], baseFilament: null, top: 0, changes: 0, heights, baseHeights, regionTop, mmPerPx: scale }
     const { order, tops } = stackBands(used, heights, explicitBase, base, layer)
     heights = heights.map((h, i) => tops.get(i) ?? h)
     const bands = order.map((f, j) => ({ filament: f, z0: j ? heights[order[j - 1]] : 0, z1: heights[f], area: area[f] }))
     const top = heights[order[order.length - 1]]
-    return { bands, baseFilament: order[0], top, changes: estimateChanges(bands, layer, top), heights }
+    analysis.regions.forEach((r, i) => kept[i] && (regionTop[r.id] = heights[regionFil[i]]))
+    return { bands, baseFilament: order[0], top, changes: estimateChanges(bands, layer, top), heights, baseHeights, regionTop, mmPerPx: scale }
   }
 
   let baseFil: number | null = explicitBase
@@ -89,21 +112,22 @@ export function makePlan(analysis: Analysis, mapping: number[], s: BuildSettings
     baseFil = pool.length ? pool.reduce((a, b) => (area[b] > area[a] ? b : a)) : null
   }
   const compact = s.strategy === 'compact'
-  const placed = analysis.regions.map((r, i) => {
-    const fil = regionFil[i]
+  const placed = analysis.regions.filter((_, i) => kept[i]).map((r) => {
+    const fil = regionFil[r.id]
     const ov = s.region_overrides[r.id]
     let z1 = ov?.height_mm != null ? snap(ov.height_mm, layer) : s.cluster_heights[r.cluster] != null ? snap(s.cluster_heights[r.cluster], layer) : heights[fil]
     const fromBed = (filaments[fil].start_from_bed && !compact) || fil === baseFil
     const z0 = fromBed ? 0 : base
     const lo = fil === baseFil ? base : fromBed ? layer : base + layer
     z1 = r6(Math.max(z1, lo))
-    return { fil, z0, z1, area: r.area }
+    return { id: r.id, fil, z0, z1, area: r.area }
   })
   if (compact) {
     const squeeze = squeezeHeights(placed.map((p) => p.z1), base, layer)
     placed.forEach((p) => (p.z1 = squeeze(p.z1)))
     heights = heights.map(squeeze)
   }
+  placed.forEach((p) => (regionTop[p.id] = p.z1))
   const groups = new Map<string, PlanBand>()
   placed.forEach(({ fil, z0, z1, area }) => {
     const key = `${fil}:${z0}:${z1.toFixed(3)}`
@@ -114,7 +138,7 @@ export function makePlan(analysis: Analysis, mapping: number[], s: BuildSettings
   const bands = [...groups.values()]
   if (baseFil != null && base > 0) bands.push({ filament: baseFil, z0: 0, z1: base, area: 0 })
   const top = bands.reduce((m, b) => Math.max(m, b.z1), 0)
-  return { bands, baseFilament: baseFil, top, changes: estimateChanges(bands, layer, top), heights }
+  return { bands, baseFilament: baseFil, top, changes: estimateChanges(bands, layer, top), heights, baseHeights, regionTop, mmPerPx: scale }
 }
 
 /** Same dynamic programme as relief/changes.py: fewest changes with optimal chaining. */

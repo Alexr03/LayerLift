@@ -47,6 +47,7 @@ class Filament:
 class RegionOverride:
     filament: int | None = None
     height_mm: float | None = None
+    removed: bool = False  # leave this area out of the print (it becomes background)
 
 
 @dataclass
@@ -332,14 +333,21 @@ def build_relief(
 
     # ---- per-region filament and heights ----------------------------------------
     n_regions = len(analysis.region_info)
-    reg_fil = np.empty(n_regions, np.int64)
+    reg_fil = np.zeros(n_regions, np.int64)
+    removed = np.zeros(n_regions, bool)
     for r in analysis.region_info:
         ov = region_overrides.get(r.id)
+        if ov is not None and ov.removed:
+            removed[r.id] = True
+            continue
         fil = ov.filament if ov is not None and ov.filament is not None else mapping[r.cluster]
         if not 0 <= fil < len(filaments):
             raise ValueError(f"region {r.id} override refers to a filament that does not exist")
         reg_fil[r.id] = fil
-    areas = np.bincount(reg_fil, weights=[r.area for r in analysis.region_info], minlength=len(filaments))
+    if removed.all():
+        raise ValueError("every area was removed, so there is nothing left to print")
+    kept_area = [0 if removed[r.id] else r.area for r in analysis.region_info]
+    areas = np.bincount(reg_fil, weights=kept_area, minlength=len(filaments))
     used = [i for i in range(len(filaments)) if areas[i] > 0]
 
     base_mm = snap(settings.base_mm, layer)
@@ -361,6 +369,8 @@ def build_relief(
     clamped: dict[int, list[float]] = {}
     ignored_heights = False
     for r in analysis.region_info:
+        if removed[r.id]:
+            continue  # never joins an element, so its pixels become background
         fil = int(reg_fil[r.id])
         ov = region_overrides.get(r.id)
         own_height = ov.height_mm if ov is not None and ov.height_mm is not None else cluster_heights.get(r.cluster)

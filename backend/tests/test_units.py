@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from relief.analyse import remove_specks
+from relief.analyse import region_neighbours, remove_specks
 from relief.changes import estimate_changes, layer_sets
 from relief.colour import delta_e_2000, hex_to_lab, lab_to_srgb, srgb_to_lab
 from relief.imageio import ImageError, foreground_mask, load_image
@@ -158,6 +158,27 @@ def test_remove_specks_reassigns_to_neighbour():
     labels[5:7, 5:7] = 1  # 4 px speck inside label 0
     out = remove_specks(labels, min_area=10)
     assert (out == 0).all()
+
+
+def test_region_neighbours_count_shared_edges():
+    regions = np.array(
+        [
+            [0, 0, 1, 1],
+            [0, 0, 1, 1],
+            [2, 2, 2, -1],
+        ]
+    )
+    nb = region_neighbours(regions, 3)
+    assert nb[0] == [(1, 2), (2, 2)]
+    assert nb[1] == [(0, 2), (2, 1)]
+    assert nb[2] == [(0, 2), (1, 1)]
+
+
+def test_regions_carry_their_neighbours(auto_analysis):
+    by_id = {r.id: r for r in auto_analysis.region_info}
+    for r in auto_analysis.region_info:
+        for other, length in r.neighbours:
+            assert length > 0 and (r.id, length) in by_id[other].neighbours
 
 
 # ------------------------------------------------------------------------------ image loading

@@ -259,6 +259,16 @@ a.primary {
   color: var(--danger);
 }
 
+button.link {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .big {
   white-space: nowrap;
   padding: 0.65rem 1.4rem;
@@ -510,6 +520,17 @@ input[type='color'] {
   font-weight: 600;
 }
 
+.undo-redo {
+  margin-left: auto;
+  display: flex;
+  gap: 0.25rem;
+}
+
+.undo-redo button {
+  padding: 0.3rem 0.6rem;
+  font-size: 0.85rem;
+}
+
 .explode {
   margin-left: auto;
   display: flex;
@@ -563,6 +584,54 @@ input[type='color'] {
 
 .map-canvas .hidden {
   display: none;
+}
+
+.map-tip {
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+  transform: translate(14px, 14px);
+  min-width: 9rem;
+  max-width: 16rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: var(--radius-s);
+  background: var(--panel);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  font-size: 0.82rem;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.map-tip.left {
+  transform: translate(calc(-100% - 14px), 14px);
+}
+
+.map-tip.up {
+  transform: translate(14px, calc(-100% - 14px));
+}
+
+.map-tip.left.up {
+  transform: translate(calc(-100% - 14px), calc(-100% - 14px));
+}
+
+.map-tip strong {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-weight: 600;
+}
+
+.map-tip .chip {
+  width: 0.8rem;
+  height: 0.8rem;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--muted) 60%, transparent);
+}
+
+.map-tip span {
+  display: block;
+  color: var(--muted);
 }
 
 .canvas-note {
@@ -730,6 +799,25 @@ input[type='color'] {
 .swatch.on {
   outline: 3px solid var(--ink);
   outline-offset: 2px;
+}
+
+.speck-range {
+  display: grid;
+  grid-template-columns: auto 1fr 4.2rem;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.87rem;
+}
+
+.speck-range input {
+  width: 100%;
+}
+
+.speck-range em {
+  font-style: normal;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
 }
 
 .inline-num {

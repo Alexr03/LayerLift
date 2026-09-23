@@ -38,6 +38,7 @@ class FilamentIn(BaseModel):
 class RegionOverrideIn(BaseModel):
     filament: int | None = Field(default=None, ge=0)
     height_mm: float | None = Field(default=None, gt=0, le=50)
+    removed: bool = False
 
 
 class BuildRequest(BaseModel):
@@ -102,6 +103,7 @@ class RegionOut(BaseModel):
     bbox: tuple[int, int, int, int]
     centroid: tuple[float, float]
     outline_share: float
+    neighbours: list[tuple[int, int]] = []  # (region id, shared boundary px), longest first
 
 
 class AnalyseResponse(BaseModel):

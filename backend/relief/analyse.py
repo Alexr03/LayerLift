@@ -31,6 +31,7 @@ class Region:
     bbox: tuple[int, int, int, int]  # x, y, w, h
     centroid: tuple[float, float]  # x, y
     outline_share: float  # fraction of the silhouette outline this region lies on
+    neighbours: list[tuple[int, int]] = field(default_factory=list)  # (region id, shared boundary px), longest first
 
 
 @dataclass
@@ -254,6 +255,25 @@ def find_regions(labels: np.ndarray) -> tuple[np.ndarray, list[Region]]:
     return regions, info
 
 
+def region_neighbours(regions: np.ndarray, n: int) -> list[list[tuple[int, int]]]:
+    """Per region, its neighbouring regions and shared boundary length (4-neighbour pixel pairs)."""
+    keys = []
+    for a, b in ((regions[:, :-1], regions[:, 1:]), (regions[:-1, :], regions[1:, :])):
+        sel = (a != b) & (a >= 0) & (b >= 0)
+        lo = np.minimum(a[sel], b[sel]).astype(np.int64)
+        hi = np.maximum(a[sel], b[sel]).astype(np.int64)
+        keys.append(lo * n + hi)
+    pairs, counts = np.unique(np.concatenate(keys), return_counts=True)
+    out: list[list[tuple[int, int]]] = [[] for _ in range(n)]
+    for key, count in zip(pairs.tolist(), counts.tolist()):
+        a, b = divmod(key, n)
+        out[a].append((b, count))
+        out[b].append((a, count))
+    for lst in out:
+        lst.sort(key=lambda t: (-t[1], t[0]))
+    return out
+
+
 def cluster_adjacency(labels: np.ndarray, n: int) -> np.ndarray:
     """Symmetric (n, n) matrix of shared boundary length (4-neighbour pixel pairs)."""
     adj = np.zeros((n, n), np.float64)
@@ -338,6 +358,8 @@ def analyse(
             )
         )
     regions, info = find_regions(labels)
+    for r, nb in zip(info, region_neighbours(regions, len(info))):
+        r.neighbours = nb
     adjacency = cluster_adjacency(labels, len(clusters))
     return Analysis(
         mask=labels >= 0,

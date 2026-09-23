@@ -22,6 +22,7 @@ export interface Region {
   bbox: [number, number, number, number]
   centroid: [number, number]
   outline_share: number
+  neighbours?: [number, number][] // [region id, shared boundary px], longest first
 }
 
 export interface Analysis {
@@ -54,6 +55,7 @@ export interface AnalysisOptions {
 export interface RegionOverride {
   filament?: number | null
   height_mm?: number | null
+  removed?: boolean // left out of the print; the area becomes background
 }
 
 /** How colours are arranged in height; see relief/pipeline.py STRATEGIES. */

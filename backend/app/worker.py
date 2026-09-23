@@ -66,6 +66,7 @@ def analysis_payload(analysis: Analysis, meta: dict, filaments: list[dict] | Non
                 "bbox": r.bbox,
                 "centroid": r.centroid,
                 "outline_share": r.outline_share,
+                "neighbours": r.neighbours,
             }
             for r in analysis.region_info
         ],

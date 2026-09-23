@@ -158,7 +158,8 @@ the default 2 workers. Raise `LAYERLIFT_WORKERS` and the memory limit together.
    boundary length and by global share. Small problems are solved exhaustively; larger ones
    by local search, which matched the exhaustive optimum in tests. User pins are kept fixed.
 4. **Heights:** each filament has a top height (or heights follow brightness), with
-   per-colour and per-region overrides. Everything snaps to the layer height. Light
+   per-colour and per-region overrides. Regions can also be removed, which leaves a hole
+   like the background. Everything snaps to the layer height. Light
    filaments can start from the bed. The base colour is the non-bed filament that covers
    the most area, unless you choose one. A **relief strategy** trades that layout for fewer
    filament changes, and so a faster print (fixture: 28 changes):
