@@ -5,10 +5,11 @@ import {
   ApiError,
   type BuildResult,
   type BuildSettings,
+  type BuildStatus,
   type Filament,
   type RegionOverride,
   analyse,
-  build,
+  buildWithProgress,
   suggestMapping,
 } from './api'
 import { loadCurrentPalette, storeCurrentPalette } from './palettes'
@@ -17,6 +18,7 @@ import ColourList from './components/ColourList'
 import FilamentEditor from './components/FilamentEditor'
 import LayerStack from './components/LayerStack'
 import MappingCanvas from './components/MappingCanvas'
+import ProgressCard from './components/ProgressCard'
 import RegionInspector from './components/RegionInspector'
 import Results from './components/Results'
 import SizeDepth from './components/SizeDepth'
@@ -62,6 +64,7 @@ export default function App() {
   const [busy, setBusy] = useState<'analysing' | 'building' | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<BuildResult | null>(null)
+  const [status, setStatus] = useState<BuildStatus | null>(null)
   const [builtKey, setBuiltKey] = useState('')
   const [view, setView] = useState<View>('map')
   const [explode, setExplode] = useState(0)
@@ -214,8 +217,9 @@ export default function App() {
     setBusy('building')
     setError(null)
     const key = settingsKey
+    setStatus(null)
     try {
-      const r = await build(file, settings, ctrl.signal)
+      const r = await buildWithProgress(file, settings, setStatus, ctrl.signal)
       setResult(r)
       setBuiltKey(key)
       setView('3d')
@@ -223,7 +227,10 @@ export default function App() {
       if ((e as Error).name === 'AbortError') return
       setError(e instanceof ApiError ? e.message : 'Could not reach the LayerLift server.')
     } finally {
-      if (buildAbort.current === ctrl) setBusy(null)
+      if (buildAbort.current === ctrl) {
+        setBusy(null)
+        setStatus(null)
+      }
     }
   }
 
@@ -412,7 +419,20 @@ export default function App() {
                 </div>
               </div>
             )}
-            {busy === 'analysing' && <div className="empty"><p className="working">Finding colours and regions…</p></div>}
+            {busy === 'analysing' && (
+              <ProgressCard title="Finding colours and regions" progress={null} detail="Usually a few seconds. Large images take a little longer." />
+            )}
+            {busy === 'building' && (
+              <ProgressCard
+                title={status?.state === 'queued' || !status ? 'Starting the build' : status.stage}
+                progress={status?.progress ?? 0}
+                detail={
+                  status?.state === 'queued'
+                    ? 'Waiting for a free worker. Another build is running.'
+                    : `${(status?.elapsed_s ?? 0) < 1 ? 'Just started' : `${Math.round(status!.elapsed_s)} s so far`}. Detailed images take longer. You can keep editing; changes apply to the next build.`
+                }
+              />
+            )}
             {analysis && busy !== 'analysing' && (view === 'map' || view === 'original') && (
               <MappingCanvas
                 analysis={analysis}
@@ -424,7 +444,7 @@ export default function App() {
               />
             )}
             {view === '3d' && result && (
-              <Suspense fallback={<p className="working">Loading 3D viewer…</p>}>
+              <Suspense fallback={<ProgressCard title="Loading the 3D viewer" progress={null} />}>
                 <Viewer3D url={result.glb_url} explode={explode} />
               </Suspense>
             )}
@@ -442,7 +462,7 @@ export default function App() {
                 : 'Choose an image to start.'}
             </p>
             <button type="button" className="primary big" onClick={runBuild} disabled={!analysis || busy != null}>
-              {busy === 'building' ? 'Building…' : result && !stale ? 'Build again' : 'Build relief'}
+              {busy === 'building' ? `Building… ${Math.round((status?.progress ?? 0) * 100)}%` : result && !stale ? 'Build again' : 'Build relief'}
             </button>
           </div>
         </section>

@@ -135,6 +135,7 @@ def partition(
     grow_frac: float = 0.25,
     min_area: float = 0.05,
     cleanup_rounds: int = 3,
+    progress=None,
 ) -> tuple[dict[str, object], object, PartitionReport]:
     """Exact partition of the silhouette between items (no gaps, no overlaps).
 
@@ -143,8 +144,10 @@ def partition(
     seams left by vectorising), clipped to the silhouette and to what is still free. The
     largest item takes the remainder. Pieces narrower than ``min_feature`` or smaller
     than ``min_area`` are then handed to the neighbour sharing the longest edge.
-    Returns (key -> final geometry, final silhouette, report).
+    Returns (key -> final geometry, final silhouette, report). ``progress(fraction)`` is
+    called as items are processed.
     """
+    tick = progress or (lambda fraction: None)
     report = PartitionReport()
     r = min_feature / 2
     sil = clean(opening(silhouette, r), min_area)
@@ -158,7 +161,8 @@ def partition(
 
     taken = EMPTY
     result: dict[str, object] = {}
-    for it in order:
+    for n, it in enumerate(order):
+        tick(0.6 * n / max(len(order), 1))
         g = opening(it.geom, r, grow=r * grow_frac).intersection(sil)
         g = clean(g.difference(taken) if not taken.is_empty else g)
         g = clean(opening(g, r * 0.5).intersection(g))  # drop slivers left by the subtraction
@@ -168,7 +172,9 @@ def partition(
     result[remainder.key] = clean(sil.difference(taken))
     report.removed_area.setdefault(remainder.key, 0.0)
 
+    tick(0.6)
     result, sil = _hand_off_slivers(result, sil, r, min_area, cleanup_rounds, report)
+    tick(1.0)
     return result, sil, report
 
 

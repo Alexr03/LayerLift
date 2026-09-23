@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import io
 import json
+import os
 import time
 from pathlib import Path
 
@@ -86,13 +87,43 @@ def run_analysis(image: bytes, options: dict, max_side: int, filaments: list[dic
     return analysis, analysis_payload(analysis, meta, filaments)
 
 
+class ProgressWriter:
+    """Writes {stage, progress} to a JSON file the API process reads when the browser polls."""
+
+    def __init__(self, path: str | None):
+        self.path = path
+        self.stage = ""
+        self.last = 0.0
+
+    def __call__(self, stage: str, fraction: float) -> None:
+        if self.path is None:
+            return
+        now = time.monotonic()
+        # Throttle repeats of the same stage; always write stage changes.
+        if stage == self.stage and now - self.last < 0.2:
+            return
+        self.stage, self.last = stage, now
+        tmp = self.path + ".tmp"
+        try:
+            with open(tmp, "w", encoding="utf8") as fh:
+                json.dump({"stage": stage, "progress": round(max(0.0, min(1.0, fraction)), 3)}, fh)
+            os.replace(tmp, self.path)
+        except OSError:
+            pass  # a reader holding the file open (Windows) just means this update is skipped
+
+
 def run_build(
     image: bytes | None, analysis: Analysis | None, request: dict, job_dir: str, max_side: int
 ) -> tuple[Analysis, dict]:
     """Build the relief and write every output file into job_dir. Returns stats for the API."""
     t0 = time.perf_counter()
+    report = ProgressWriter(str(Path(job_dir) / "progress.json"))
+    start = 0.0
     if analysis is None:
+        report("Finding colours", 0.0)
         analysis, _ = compute_analysis(image, request.get("analysis", {}), max_side)
+        start = 0.1
+    span = 0.85 - start
     filaments = [Filament(**f) for f in request["filaments"]]
     settings = BuildSettings(
         width_mm=request["width_mm"],
@@ -120,13 +151,16 @@ def run_build(
         mapping=request.get("mapping"),
         cluster_heights={int(k): v for k, v in request.get("cluster_heights", {}).items()},
         region_overrides=overrides,
+        progress=lambda stage, f: report(stage, start + span * f),
     )
     title = request.get("title") or "LayerLift relief"
     out = Path(job_dir)
+    report("Rendering previews", 0.86)
     preview = png_bytes(preview_image(result.footprints_for_preview(), result.size_mm[:2], px_per_mm=max(2.0, 800 / max(result.size_mm[:2]))))
     thumb = png_bytes(preview_image(result.footprints_for_preview(), result.size_mm[:2], px_per_mm=max(1.0, 256 / max(result.size_mm[:2]))))
     (out / "preview.png").write_bytes(preview)
     (out / "model.glb").write_bytes(export_glb(result))
+    report("Writing the 3MF and STL files", 0.9)
     (out / "relief.3mf").write_bytes(export_3mf(result, title, thumbnail_png=thumb))
     (out / "relief_stl.zip").write_bytes(export_stl_zip(result, title))
     stats = {

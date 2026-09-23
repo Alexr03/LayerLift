@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -201,7 +202,11 @@ def build_relief(
     mapping: list[int] | None = None,
     cluster_heights: dict[int, float] | None = None,
     region_overrides: dict[int, RegionOverride] | None = None,
+    progress: Callable[[str, float], None] | None = None,
 ) -> ReliefResult:
+    """Build per-filament meshes. ``progress(stage, fraction)`` is called as work advances."""
+    report_progress = progress or (lambda stage, fraction: None)
+    report_progress("Planning colours and heights", 0.0)
     settings = settings or BuildSettings()
     warnings: list[BuildWarning] = []
     layer = settings.layer_mm
@@ -293,6 +298,7 @@ def build_relief(
     # ---- raster -> vector ----------------------------------------------------------
     h, w = elem_labels.shape
     up = settings.upscale or int(min(4, max(1, round(2048 / max(h, w)))))
+    report_progress("Smoothing edges", 0.03)
     big = geo.smooth_upscale(elem_labels, len(elements), up, settings.smooth_sigma)
     big = remove_specks(big, max(4, int(round(10 * (max(h, w) / 512) ** 2 * up * up / 4))))
 
@@ -313,11 +319,15 @@ def build_relief(
     silhouette = to_mm(sil_px)
     items = []
     for i, e in enumerate(elements):
+        report_progress("Tracing outlines", 0.06 + 0.04 * i / max(len(elements), 1))
         g = to_mm(geo.mask_polygons(big == i, settings.simplify_px))
         items.append(geo.PartitionItem(key=e.key, geom=g, z1=e.z1))
 
     min_feature = settings.min_feature_mm or settings.nozzle_mm
-    finals, silhouette, report = geo.partition(items, silhouette, min_feature)
+    report_progress("Fitting colours together", 0.1)
+    finals, silhouette, report = geo.partition(
+        items, silhouette, min_feature, progress=lambda f: report_progress("Fitting colours together", 0.1 + 0.4 * f)
+    )
     for e in elements:
         e.footprint = finals.get(e.key, geo.EMPTY)
         e.area_mm2 = e.footprint.area
@@ -351,6 +361,8 @@ def build_relief(
 
     # ---- extrusion -------------------------------------------------------------------
     for _attempt in range(6):
+        # Later passes only fix corners where one colour touches itself; each is quicker to finish.
+        report_progress("Building 3D parts" if _attempt == 0 else "Tidying up touching corners", 0.95 - 0.45 * 0.6**_attempt)
         merged, intervals, silhouette = _extrude_all(elements, silhouette, base_fil, base_mm)
         pinches = {fil: geo.pinch_edges(solid) for fil, solid in merged.items()}
         if not any(pinches.values()):
@@ -365,6 +377,7 @@ def build_relief(
             )
         )
 
+    report_progress("Measuring parts", 0.95)
     parts: list[Part] = []
     for fil in sorted(merged):
         solid = merged[fil]

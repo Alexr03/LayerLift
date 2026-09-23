@@ -7,6 +7,7 @@ import contextlib
 import hashlib
 import json
 import logging
+import time
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, Request, UploadFile
@@ -45,11 +46,15 @@ async def lifespan(app: FastAPI):
     app.state.cache = LRUCache(settings.analysis_cache_size)
     app.state.pool = WorkerPool(settings.workers)
     app.state.pool.warm_up()
+    app.state.builds = {}  # job_id -> in-memory state of builds started with POST /api/builds
 
     async def sweeper():
         while True:
             try:
                 removed = app.state.jobs.sweep()
+                cutoff = time.time() - settings.job_ttl_seconds
+                for job_id in [j for j, b in app.state.builds.items() if b["started"] < cutoff and b["state"] in ("done", "error")]:
+                    del app.state.builds[job_id]
                 if removed:
                     log.info("removed %d expired jobs", removed)
             except Exception:  # pragma: no cover - never let the sweeper die
@@ -180,15 +185,18 @@ async def map_colours(req: MapRequest):
     return {"mapping": result.assignment, "method": result.method}
 
 
-@app.post("/api/build", response_model=BuildResponse)
-async def build(file: UploadFile = File(...), settings: str = Form(...)):
-    """Build the relief. Returns stats plus URLs for the preview, the GLB and downloads."""
+async def _prepare_build(file: UploadFile, settings: str):
     s = get_settings()
     req = _parse(BuildRequest, settings, "settings")
     image = await _read_upload(file)
     key = _cache_key(image, req.analysis, s.max_image_side)
-    cached = app.state.cache.get(key)
     job_id, job_dir = app.state.jobs.create()
+    return req, image, key, job_id, job_dir
+
+
+async def _execute_build(req: BuildRequest, image: bytes, key: str, job_id: str, job_dir: Path) -> dict:
+    s = get_settings()
+    cached = app.state.cache.get(key)
     try:
         analysis, stats = await _run(
             worker.run_build,
@@ -211,6 +219,59 @@ async def build(file: UploadFile = File(...), settings: str = Form(...)):
         "downloads": {"3mf": f"{base}/download?format=3mf", "stl-zip": f"{base}/download?format=stl-zip"},
         **stats,
     }
+
+
+@app.post("/api/build", response_model=BuildResponse)
+async def build(file: UploadFile = File(...), settings: str = Form(...)):
+    """Build the relief and wait for it. Returns stats plus URLs for the preview, GLB and downloads."""
+    req, image, key, job_id, job_dir = await _prepare_build(file, settings)
+    return await _execute_build(req, image, key, job_id, job_dir)
+
+
+@app.post("/api/builds", status_code=202)
+async def start_build(file: UploadFile = File(...), settings: str = Form(...)):
+    """Start a build in the background. Poll /api/jobs/{job_id}/status for progress and the result."""
+    req, image, key, job_id, job_dir = await _prepare_build(file, settings)
+    job = {"state": "queued", "started": time.time(), "result": None, "error": None}
+
+    async def runner():
+        try:
+            job["result"] = BuildResponse.model_validate(await _execute_build(req, image, key, job_id, job_dir)).model_dump()
+            job["state"] = "done"
+        except ApiError as exc:
+            job["state"] = "error"
+            job["error"] = {"code": exc.code, "message": exc.message, "detail": exc.detail}
+        except Exception:  # never leave a job "running" forever
+            log.exception("build %s failed", job_id)
+            app.state.jobs.discard(job_id)
+            job["state"] = "error"
+            job["error"] = {"code": "internal_error", "message": "The build failed unexpectedly.", "detail": {}}
+
+    job["task"] = asyncio.create_task(runner())
+    app.state.builds[job_id] = job
+    return {"job_id": job_id, "status_url": f"/api/jobs/{job_id}/status"}
+
+
+@app.get("/api/jobs/{job_id}/status")
+async def job_status(job_id: str):
+    """Progress of a background build: state, stage text, fraction done, and the result when done."""
+    job = app.state.builds.get(job_id)
+    if job is None:
+        raise ApiError(404, "job_not_found", "This job has expired or does not exist. Build again.")
+    out = {"job_id": job_id, "state": job["state"], "elapsed_s": round(time.time() - job["started"], 1)}
+    if job["state"] == "done":
+        out.update(stage="Done", progress=1.0, result=job["result"])
+    elif job["state"] == "error":
+        out.update(stage="Failed", progress=0.0, error=job["error"])
+    else:
+        out.update(stage="Waiting for a free worker", progress=0.0)
+        path = app.state.jobs.path(job_id)
+        if path is not None and (path / "progress.json").is_file():
+            try:
+                out.update(json.loads((path / "progress.json").read_text(encoding="utf8")), state="running")
+            except (OSError, ValueError):
+                out["state"] = "running"  # being rewritten right now; the next poll will read it
+    return out
 
 
 def _job_file(job_id: str, name: str) -> Path:

@@ -147,6 +147,51 @@ def test_unknown_job_and_endpoint(client):
     assert client.get("/api/nope").json()["error"]["code"] == "not_found"
 
 
+def test_background_build_reports_progress(client, analysed):
+    import time
+
+    settings = {"filaments": FILAMENTS, "mapping": analysed["suggested_mapping"], "width_mm": 80}
+    r = client.post(
+        "/api/builds",
+        files={"file": ("turtles.png", TURTLES.read_bytes(), "image/png")},
+        data={"settings": json.dumps(settings)},
+    )
+    assert r.status_code == 202, r.text
+    status_url = r.json()["status_url"]
+    seen = []
+    deadline = time.time() + 120
+    while time.time() < deadline:
+        s = client.get(status_url).json()
+        seen.append((s["state"], s["stage"], s["progress"]))
+        if s["state"] in ("done", "error"):
+            break
+        time.sleep(0.2)
+    assert s["state"] == "done", s
+    assert s["result"]["size_mm"][0] == pytest.approx(80, abs=0.01)
+    running = [p for state, _, p in seen if state == "running"]
+    assert running, seen
+    assert running == sorted(running)  # progress never goes backwards
+    assert {stage for state, stage, _ in seen if state == "running"} & {"Fitting colours together", "Building 3D parts"}
+    assert client.get(s["result"]["downloads"]["3mf"]).status_code == 200
+
+
+def test_background_build_reports_errors(client):
+    r = client.post(
+        "/api/builds",
+        files={"file": ("t.png", TURTLES.read_bytes(), "image/png")},
+        data={"settings": json.dumps({"filaments": FILAMENTS, "mapping": [0, 1]})},
+    )
+    status_url = r.json()["status_url"]
+    for _ in range(300):
+        s = client.get(status_url).json()
+        if s["state"] in ("done", "error"):
+            break
+        __import__("time").sleep(0.2)
+    assert s["state"] == "error" and s["error"]["code"] == "invalid_settings"
+    assert client.get("/api/jobs/0123456789abcdef01234567/status").status_code == 404
+
+
+# Keep last: this starts a second app lifespan, which replaces the shared app state.
 def test_timeout_kills_the_job(monkeypatch):
     monkeypatch.setenv("LAYERLIFT_JOB_TIMEOUT_SECONDS", "1")
     monkeypatch.setenv("LAYERLIFT_WORKERS", "1")

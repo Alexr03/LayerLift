@@ -178,3 +178,43 @@ export async function build(file: File, settings: BuildSettings, signal?: AbortS
 export async function getConfig(): Promise<{ max_upload_mb: number; version: string }> {
   return handle(await fetch('/api/config'))
 }
+
+export interface BuildStatus {
+  job_id: string
+  state: 'queued' | 'running' | 'done' | 'error'
+  stage: string
+  progress: number
+  elapsed_s: number
+  result?: BuildResult
+  error?: { code: string; message: string }
+}
+
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(resolve, ms)
+    signal?.addEventListener('abort', () => {
+      clearTimeout(t)
+      reject(new DOMException('Aborted', 'AbortError'))
+    })
+  })
+}
+
+/** Start a background build and poll its status, reporting progress until it finishes. */
+export async function buildWithProgress(
+  file: File,
+  settings: BuildSettings,
+  onProgress: (s: BuildStatus) => void,
+  signal?: AbortSignal,
+): Promise<BuildResult> {
+  const form = new FormData()
+  form.append('file', file)
+  form.append('settings', JSON.stringify(settings))
+  const started = await handle<{ job_id: string; status_url: string }>(await fetch('/api/builds', { method: 'POST', body: form, signal }))
+  for (;;) {
+    await sleep(350, signal)
+    const s = await handle<BuildStatus>(await fetch(started.status_url, { signal }))
+    onProgress(s)
+    if (s.state === 'done' && s.result) return s.result
+    if (s.state === 'error') throw new ApiError(422, s.error?.code ?? 'build_failed', s.error?.message ?? 'The build failed.')
+  }
+}

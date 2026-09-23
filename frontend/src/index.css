@@ -880,3 +880,91 @@ input[type='color'] {
 .error button.icon {
   color: #fff;
 }
+
+/* ------------------------------------------------------------------ progress */
+
+.progress-overlay {
+  position: absolute;
+  z-index: 2; /* above the colour map, whose drop shadow creates its own stacking context */
+  inset: auto 0 0 0;
+  padding: clamp(0.75rem, 2.5vw, 1.5rem);
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.canvas-area:not(:has(.map-canvas, .viewer, .relief-img)) .progress-overlay {
+  inset: 0;
+  align-items: center;
+}
+
+.progress-card {
+  pointer-events: auto;
+  width: min(100%, 26rem);
+  background: color-mix(in srgb, var(--panel) 94%, transparent);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  padding: 0.8rem 1rem 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  box-shadow: 0 8px 24px rgba(40, 28, 4, 0.28);
+}
+
+.progress-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+}
+
+.progress-head strong {
+  font-family: var(--display);
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.progress-pct {
+  font-family: var(--display);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+/* The bar fills in stacked "layers", like the print it is making. */
+.progress-bar {
+  height: 12px;
+  border-radius: 3px;
+  background: var(--bg);
+  box-shadow: inset 0 0 0 1px var(--line);
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background:
+    repeating-linear-gradient(90deg, transparent 0 5px, rgba(255, 255, 255, 0.22) 5px 6px),
+    linear-gradient(90deg, var(--steel), var(--pei));
+  border-radius: 3px;
+}
+
+.progress-bar.indeterminate .progress-fill {
+  width: 35%;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .progress-fill {
+    transition: width 0.35s ease-out;
+  }
+  .progress-bar.indeterminate .progress-fill {
+    animation: sweep 1.3s ease-in-out infinite;
+  }
+  @keyframes sweep {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: translateX(290%);
+    }
+  }
+}
