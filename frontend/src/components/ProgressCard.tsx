@@ -5,7 +5,7 @@ interface Props {
   detail?: string
 }
 
-/** Progress shown over the build plate while LayerLift is working. */
+/** Progress shown over the work surface while LayerLift is working. */
 export default function ProgressCard({ title, progress, detail }: Props) {
   const pct = progress == null ? null : Math.round(progress * 100)
   return (

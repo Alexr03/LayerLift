@@ -655,10 +655,10 @@ export default function App() {
             {!analysis && busy !== 'analysing' && (
               <div className="empty">
                 <svg viewBox="0 0 240 120" className="empty-art" aria-hidden>
-                  <rect x="20" y="92" width="200" height="16" rx="2" fill="#1F2328" />
+                  <rect x="20" y="92" width="200" height="16" rx="2" fill="currentColor" />
                   <rect x="44" y="74" width="152" height="16" rx="2" fill="#2F5D8C" />
                   <rect x="76" y="56" width="88" height="16" rx="2" fill="#C7962F" />
-                  <rect x="100" y="38" width="40" height="16" rx="2" fill="#F2F2EE" stroke="#1F2328" strokeWidth="1.5" />
+                  <rect x="100" y="38" width="40" height="16" rx="2" fill="#F2F2EE" stroke="currentColor" strokeWidth="1.5" />
                 </svg>
                 <h2>Drop a logo here</h2>
                 <p>LayerLift finds its colours, matches them to the filaments in your AMS, and stacks each colour at its own height.</p>

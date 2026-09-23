@@ -18,7 +18,7 @@ export default function Viewer3D({ url, explode }: Props) {
     const scene = new THREE.Scene()
     const camera = new THREE.PerspectiveCamera(35, 1, 0.5, 5000)
     camera.up.set(0, 0, 1) // the model is Z-up millimetres
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true }) // transparent: the plate texture shows through
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true }) // transparent: the work surface shows through
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     mount.appendChild(renderer.domElement)
 
