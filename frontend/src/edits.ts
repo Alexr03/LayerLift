@@ -7,6 +7,8 @@ export interface Edits {
   locked: Record<number, number>
   regionOverrides: Record<number, RegionOverride>
   clusterHeights: Record<number, number>
+  heights: (number | null | undefined)[] // each filament's height_mm (dragged in 3D or typed)
+  heightMode: 'manual' | 'by_luminance'
 }
 
 /** Drop an override that no longer changes anything. */

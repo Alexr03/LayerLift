@@ -239,7 +239,8 @@ LayerLift's three `LAYERLIFT_POCKETBASE_*` variables at its Service. The k3s man
    per-colour and per-region overrides. Regions can also be removed, which leaves a hole
    like the background. Everything snaps to the layer height. Light
    filaments can start from the bed. The base colour is the non-bed filament that covers
-   the most area, unless you choose one. A **relief strategy** trades that layout for fewer
+   the most area, unless you choose one. In the 3D view you can also pick a colour and drag it
+   up or down on the model, which sets that filament's height, with a live preview. A **relief strategy** trades that layout for fewer
    filament changes, and so a faster print (fixture: 28 changes):
    - *Detailed* (default): every colour is a column from the base or bed to its own height.
    - *Compact*: the same columns, with the distinct heights squeezed to one layer apart and

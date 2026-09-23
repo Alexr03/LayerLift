@@ -18,7 +18,7 @@ import {
 } from './api'
 import { boot } from './bootstrap'
 import { pb } from './pb'
-import { fmt, loadCurrentPalette, storeCurrentPalette } from './palettes'
+import { fmt, loadCurrentPalette, snap, storeCurrentPalette } from './palettes'
 import { type Edits, filamentOf, mergeAll, mergeOverride, withOverride } from './edits'
 import { makePlan } from './plan'
 import AccountMenu from './components/AccountMenu'
@@ -92,6 +92,7 @@ export default function App() {
   const [builtKey, setBuiltKey] = useState('')
   const [view, setView] = useState<View>('map')
   const [explode, setExplode] = useState(0)
+  const [liftFilament, setLiftFilament] = useState<number | null>(null) // colour picked for dragging in 3D
   const [dragging, setDragging] = useState(false)
   const [version, setVersion] = useState<string | null>(boot?.version ?? null)
   const [me, setMe] = useState<Me | null>(null)
@@ -278,6 +279,8 @@ export default function App() {
       )
       setOptions((o) => ({ ...o, base_filament: fix(o.base_filament) }))
       setHistory({ past: [], future: [] })
+    } else if (next.some((f, i) => f.height_mm !== filaments[i]?.height_mm)) {
+      record('filament-heights') // typed heights share one undo step while typing
     }
     setFilaments(next)
     storeCurrentPalette(next)
@@ -285,7 +288,14 @@ export default function App() {
 
   // ---------------------------------------------------------------- edits + undo
 
-  const snapshot = (): Edits => ({ mapping, locked, regionOverrides, clusterHeights })
+  const snapshot = (): Edits => ({
+    mapping,
+    locked,
+    regionOverrides,
+    clusterHeights,
+    heights: filaments.map((f) => f.height_mm),
+    heightMode: options.height_mode,
+  })
 
   /**
    * Save the current edits before changing them. Calls with the same ``key`` less than a second apart
@@ -305,7 +315,27 @@ export default function App() {
     setLocked(e.locked)
     setRegionOverrides(e.regionOverrides)
     setClusterHeights(e.clusterHeights)
+    if (e.heights.length === filaments.length) {
+      const next = filaments.map((f, i) => ({ ...f, height_mm: e.heights[i] ?? null }))
+      setFilaments(next)
+      storeCurrentPalette(next)
+    }
+    setOptions((o) => ({ ...o, height_mode: e.heightMode }))
     lastRecord.current = null
+  }
+
+  /**
+   * A colour was dragged to new heights in 3D (stacked: the bands above move with it). The tops
+   * become the filaments' heights; heights set by brightness are frozen as they are first.
+   */
+  const commitHeights = (tops: Record<number, number>) => {
+    if (!plan) return
+    record()
+    const frozen = options.height_mode !== 'manual'
+    const next = filaments.map((f, i) => ({ ...f, height_mm: tops[i] ?? (frozen ? plan.heights[i] : f.height_mm) }))
+    if (frozen) setOptions((o) => ({ ...o, height_mode: 'manual' }))
+    setFilaments(next)
+    storeCurrentPalette(next)
   }
 
   const undo = () => {
@@ -702,7 +732,37 @@ export default function App() {
             )}
             {view === '3d' && result && (
               <Suspense fallback={<ProgressCard title="Loading the 3D viewer" progress={null} />}>
-                <Viewer3D url={result.glb_url} explode={explode} />
+                <Viewer3D
+                  url={result.glb_url}
+                  explode={explode}
+                  edit={
+                    plan
+                      ? {
+                          parts: result.parts.map((p) => ({ filament: p.filament, name: p.name, hex: p.hex })),
+                          built: Object.fromEntries(Object.entries(result.filament_heights).map(([k, v]) => [Number(k), v])),
+                          current: Object.fromEntries(plan.heights.map((h, i) => [i, h])),
+                          stacked: options.strategy === 'stacked',
+                          layer: options.layer_mm,
+                          min: Object.fromEntries(
+                            filaments.map((f, i) => {
+                              const base = snap(options.base_mm, options.layer_mm)
+                              // The same floors as the build: the base colour stays above the base,
+                              // bed starts need a layer, the rest a layer above the base.
+                              const low = i === plan.baseFilament ? base : f.start_from_bed && options.strategy === 'detailed' ? options.layer_mm : base + options.layer_mm
+                              return [i, Math.max(low, options.layer_mm)]
+                            }),
+                          ),
+                          active: liftFilament,
+                          onActive: setLiftFilament,
+                          onCommit: commitHeights,
+                          disabled:
+                            options.strategy === 'compact'
+                              ? 'The compact strategy sets heights itself. Switch to Detailed or Stacked to drag heights.'
+                              : undefined,
+                        }
+                      : undefined
+                  }
+                />
               </Suspense>
             )}
             {view === 'relief' && result && <img className="relief-img" src={result.preview_url} alt="Top view of the relief with shading" />}

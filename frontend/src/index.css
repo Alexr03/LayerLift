@@ -652,6 +652,60 @@ input[type='color'] {
 
 .viewer canvas {
   display: block;
+  touch-action: none;
+}
+
+/* Raise or lower a colour in 3D: pick a swatch (or click the model), then drag. */
+.height-tool {
+  position: absolute;
+  left: 0.75rem;
+  top: 0.75rem;
+  right: 0.75rem;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.75rem;
+  pointer-events: none;
+}
+
+.height-swatches {
+  display: flex;
+  gap: 0.3rem;
+  padding: 0.3rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--panel) 88%, transparent);
+  border: 1px solid var(--line);
+  pointer-events: auto;
+}
+
+.height-swatches .swatch {
+  width: 1.7rem;
+  height: 1.7rem;
+}
+
+.height-hint {
+  font-size: 0.85rem;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--panel) 88%, transparent);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  padding: 0.25rem 0.55rem;
+}
+
+.drag-label {
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+  transform: translate(16px, -50%);
+  padding: 0.3rem 0.55rem;
+  border-radius: var(--radius-s);
+  background: var(--ink);
+  color: var(--panel);
+  font-size: 0.85rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .relief-img {
