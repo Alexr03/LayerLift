@@ -8,3 +8,4 @@ deploy
 *.md
 .git
 .env
+docs

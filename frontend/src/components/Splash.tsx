@@ -1,4 +1,5 @@
 import { useLayoutEffect } from 'react'
+import Wordmark from './Wordmark'
 
 interface Props {
   state: 'loading' | 'error' | 'leaving'
@@ -17,13 +18,7 @@ export default function Splash({ state, onRetry }: Props) {
 
   return (
     <div className={state === 'error' ? 'splash splash-failed' : state === 'leaving' ? 'splash leaving' : 'splash'} role={state === 'error' ? 'alert' : 'status'} aria-live="polite">
-      <svg className="splash-mark" viewBox="0 0 32 32" aria-hidden="true">
-        <rect className="l1" x="4" y="22" width="24" height="5" rx="1" />
-        <rect className="l2" x="8" y="16" width="16" height="5" rx="1" />
-        <rect className="l3" x="12" y="10" width="8" height="5" rx="1" />
-        <rect className="l4" x="14" y="5" width="4" height="4" rx="1" />
-      </svg>
-      <div className="splash-name">LayerLift</div>
+      <Wordmark />
       {state === 'error' ? (
         <>
           <p className="splash-note">Can't reach the LayerLift server right now.</p>

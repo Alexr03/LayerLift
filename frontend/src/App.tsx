@@ -37,6 +37,7 @@ import Results from './components/Results'
 import SizeDepth from './components/SizeDepth'
 import SpeckCleanup from './components/SpeckCleanup'
 import Splash from './components/Splash'
+import Wordmark from './components/Wordmark'
 
 // three.js is large; load it only when the 3D view is first opened.
 const Viewer3D = lazy(() => import('./components/Viewer3D'))
@@ -478,13 +479,9 @@ export default function App() {
     <div className="app">
       {loading !== 'done' && <Splash state={loading === 'leaving' ? 'leaving' : loading} onRetry={() => setLoadAttempt((n) => n + 1)} />}
       <header className="topbar">
-        <svg className="mark" viewBox="0 0 32 32" aria-hidden>
-          <rect x="4" y="22" width="24" height="5" rx="1" fill="#1F2328" />
-          <rect x="8" y="16" width="16" height="5" rx="1" fill="#2F5D8C" />
-          <rect x="12" y="10" width="8" height="5" rx="1" fill="#C7962F" />
-          <rect x="14" y="5" width="4" height="4" rx="1" fill="#F2F2EE" stroke="#1F2328" />
-        </svg>
-        <h1>LayerLift</h1>
+        <h1 className="brand">
+          <Wordmark />
+        </h1>
         <p>Flat-colour artwork in, multi-colour relief out, sliced by colour for your AMS.</p>
         {me && <AccountMenu me={me} onSignIn={() => setAuthOpen(true)} />}
       </header>

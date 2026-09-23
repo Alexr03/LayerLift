@@ -1,4 +1,9 @@
-# LayerLift
+<h1 align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/logo-dark.svg">
+    <img src="docs/brand/logo.svg" alt="LayerLift" width="460">
+  </picture>
+</h1>
 
 Turn a flat-colour image (logo, badge, icon) into a multi-colour 3D-printable relief.
 Upload an image, list the filaments loaded in your AMS, adjust the colour mapping and
@@ -204,6 +209,12 @@ LayerLift's three `LAYERLIFT_POCKETBASE_*` variables at its Service. The k3s man
 `deploy/k8s` don't include it yet.
 
 ## Design choices
+
+- **The logo** is "LayerLift" in three layers that lift apart towards the right: flat on the
+  left, in depth by "Lift". `docs/brand/make_logo.py` generates every copy from the app's
+  Barlow Condensed font: the SVGs for this README, the app header and loading screen, and the
+  favicon. Run it with
+  `uv run --no-project --with fonttools --with brotli --with uharfbuzz python docs/brand/make_logo.py`.
 
 - **Frontend:** plain React with local component state, and three.js without a wrapper.
 - **Saved palettes live in the browser** (`localStorage`). There is no server-side persistence.

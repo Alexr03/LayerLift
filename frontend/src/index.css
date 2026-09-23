@@ -93,14 +93,15 @@ select {
   padding: 0.9rem 1.25rem 0.6rem;
 }
 
-.topbar .mark {
-  width: 28px;
-  height: 28px;
+.topbar .brand {
+  margin: 0;
   align-self: center;
+  line-height: 0;
 }
 
-.topbar h1 {
-  font-size: 1.75rem;
+.topbar .brand .wordmark {
+  height: 50px;
+  width: auto;
 }
 
 .topbar p {
