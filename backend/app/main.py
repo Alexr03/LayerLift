@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import hashlib
+import http
 import json
 import logging
 import secrets
@@ -30,6 +31,27 @@ from .protect import SESSION_COOKIE, JobQueue, RateLimiter, Rejected, Sessions, 
 from .schemas import AnalyseResponse, AnalysisOptions, BuildRequest, BuildResponse, FilamentIn, MapRequest, MapResponse
 
 log = logging.getLogger("layerlift")
+access_log = logging.getLogger("layerlift.access")
+
+
+def _setup_logging() -> None:
+    """Send LayerLift's logs to stderr in uvicorn's style (they were silently dropped before)."""
+    if log.handlers:
+        return
+    try:
+        from uvicorn.logging import DefaultFormatter
+
+        formatter: logging.Formatter = DefaultFormatter("%(levelprefix)s %(message)s", use_colors=None)
+    except ImportError:  # pragma: no cover - uvicorn is always installed with the app
+        formatter = logging.Formatter("%(levelname)s: %(message)s")
+    handler = logging.StreamHandler()
+    handler.setFormatter(formatter)
+    log.addHandler(handler)
+    log.setLevel(logging.INFO)
+    log.propagate = False
+
+
+_setup_logging()
 
 
 class ApiError(Exception):
@@ -56,6 +78,9 @@ async def lifespan(app: FastAPI):
     app.state.queue = JobQueue(settings.max_queue, settings.max_jobs_per_client)
     if settings.turnstile_enabled:
         log.info("Cloudflare Turnstile human check is on")
+    if settings.access_log:
+        # Our access log (below) shows the real client IP; uvicorn's would show the proxy's.
+        logging.getLogger("uvicorn.access").disabled = True
 
     async def sweeper():
         while True:
@@ -139,6 +164,42 @@ async def limit_upload_size(request: Request, call_next):
     if request.method == "POST" and length and length.isdigit() and int(length) > limit:
         return _error(413, "file_too_large", f"Uploads are limited to {get_settings().max_upload_mb:g} MB.")
     return await call_next(request)
+
+
+QUIET_PATHS = ("/api/health", "/assets/", "/favicon.svg")
+
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """One access-log line per request, with the client IP the rate limits use.
+
+    Registered last, so it wraps the other middleware and logs their responses too
+    (for example 413 for oversized uploads). Health probes and static assets are skipped.
+    """
+    if not get_settings().access_log or request.url.path.startswith(QUIET_PATHS):
+        return await call_next(request)
+    start = time.perf_counter()
+    status = 500
+    try:
+        response = await call_next(request)
+        status = response.status_code
+        return response
+    finally:
+        try:
+            phrase = http.HTTPStatus(status).phrase
+        except ValueError:
+            phrase = ""
+        target = request.url.path + (f"?{request.url.query}" if request.url.query else "")
+        access_log.info(
+            '%s - "%s %s HTTP/%s" %d %s %.2fs',
+            _client(request),
+            request.method,
+            target,
+            request.scope.get("http_version", "1.1"),
+            status,
+            phrase,
+            time.perf_counter() - start,
+        )
 
 
 # ----------------------------------------------------------------------------- helpers

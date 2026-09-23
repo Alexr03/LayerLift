@@ -151,3 +151,27 @@ def test_security_headers_and_docs_off(configured):
             assert "challenges.cloudflare.com" in r.headers["content-security-policy"]
         assert c.get("/api/docs").status_code == 404
         assert c.get("/api/openapi.json").status_code == 404
+
+
+def test_access_log_uses_real_client_ip_and_skips_health(configured):
+    import logging
+
+    records: list[str] = []
+
+    class Collect(logging.Handler):
+        def emit(self, record):
+            records.append(record.getMessage())
+
+    handler = Collect()
+    logger = logging.getLogger("layerlift.access")
+    logger.addHandler(handler)
+    try:
+        with configured(client_ip_header="CF-Connecting-IP") as c:
+            c.get("/api/health")
+            c.get("/api/config", headers={"CF-Connecting-IP": "203.0.113.9"})
+            c.post("/api/nope", headers={"CF-Connecting-IP": "203.0.113.9"})
+    finally:
+        logger.removeHandler(handler)
+    assert not any("/api/health" in r for r in records)
+    assert any(r.startswith('203.0.113.9 - "GET /api/config HTTP/1.1" 200 OK') for r in records), records
+    assert any('"POST /api/nope HTTP/1.1" 404 Not Found' in r for r in records), records

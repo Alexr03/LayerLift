@@ -46,6 +46,9 @@ class Settings(BaseSettings):
     map_rate_limit_per_minute: int = 90
     # Serve the interactive API docs at /docs. Off by default for public deployments.
     enable_docs: bool = False
+    # Log one line per request with the real client IP (the same one the rate limits use).
+    # Replaces uvicorn's access log, which only sees the proxy's address behind Cloudflare.
+    access_log: bool = True
 
     @property
     def turnstile_enabled(self) -> bool:
