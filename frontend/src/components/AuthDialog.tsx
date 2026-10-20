@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { ClientResponseError } from 'pocketbase'
+import { X } from 'lucide-react'
 import { pb } from '../pb'
 
 interface Props {
@@ -93,7 +94,7 @@ export default function AuthDialog({ open, onClose }: Props) {
         <div className="panel-head">
           <h2 id="auth-h">{title}</h2>
           <button type="button" className="icon" onClick={onClose} aria-label="Close">
-            ×
+            <X size={16} />
           </button>
         </div>
         {mode !== 'reset' && (
@@ -118,7 +119,7 @@ export default function AuthDialog({ open, onClose }: Props) {
         )}
         {error && <p className="hint danger" role="alert">{error}</p>}
         {notice && <p className="hint" role="status">{notice}</p>}
-        <button type="submit" className="primary" disabled={busy}>
+        <button type="submit" className="solid" disabled={busy}>
           {busy ? 'One moment…' : mode === 'sign-up' ? 'Create account' : mode === 'reset' ? 'Send reset link' : 'Sign in'}
         </button>
         {mode !== 'reset' && providers.length > 0 && (

@@ -1,0 +1,27 @@
+# PocketBase for local development: persistent data, reachable on 127.0.0.1:8090 only.
+#
+#   docker compose -f docker-compose.dev.yml --env-file .env.dev up -d --build
+#   cd backend && uv run uvicorn app.main:app --reload --env-file ../.env.dev
+#   cd frontend && npm run dev          # http://localhost:5173, proxies /api and /pb
+#
+# .env.dev (gitignored) holds the superuser and the API's LAYERLIFT_POCKETBASE_* settings. The
+# dashboard is at http://localhost:5173/pb/_/ (sign in with PB_SUPERUSER_EMAIL). Data lives in
+# the pb_dev_data volume and survives restarts; `docker compose ... down -v` deletes it.
+name: layerlift-dev
+
+services:
+  pocketbase:
+    build: deploy/pocketbase
+    image: layerlift-pocketbase:dev
+    restart: unless-stopped
+    environment:
+      PB_SUPERUSER_EMAIL: ${PB_SUPERUSER_EMAIL:?set PB_SUPERUSER_EMAIL in .env.dev}
+      PB_SUPERUSER_PASSWORD: ${PB_SUPERUSER_PASSWORD:?set PB_SUPERUSER_PASSWORD in .env.dev}
+      PB_APP_URL: ${PB_APP_URL:-http://localhost:5173/pb}
+    ports:
+      - "127.0.0.1:8090:8090"
+    volumes:
+      - pb_dev_data:/pb/pb_data
+
+volumes:
+  pb_dev_data:

@@ -1,3 +1,4 @@
+import { Merge, MousePointerClick, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import type { Analysis, RegionOverride } from '../api'
 import { fmt } from '../palettes'
@@ -34,17 +35,17 @@ export default function SpeckCleanup({ analysis, overrides, mmPerPx, standsOut, 
         <em>{fmt(limit)} mm²</em>
       </label>
       <p className="hint">
-        About a {fmt(Math.sqrt(limit))} mm square at this print size. For specks big enough to print but not worth their own colour.
+        About {fmt(Math.sqrt(limit))} × {fmt(Math.sqrt(limit))} mm at this size.
       </p>
       <div className="row wrap">
         <button type="button" className="ghost" disabled={!n} onClick={() => onSelect(small)}>
-          Select
+          <MousePointerClick size={15} /> Select
         </button>
         <button type="button" className="ghost" disabled={!n} onClick={() => onMerge(small)} title="Each takes the filament of the neighbour sharing the longest edge">
-          Merge into surroundings
+          <Merge size={15} /> Merge into surroundings
         </button>
         <button type="button" className="ghost danger" disabled={!n} onClick={() => onRemove(small)}>
-          Remove
+          <Trash2 size={15} /> Remove
         </button>
       </div>
     </section>

@@ -89,7 +89,7 @@ export default function AdminPage({ me }: Props) {
           <h2>Admin</h2>
           <p>This page is for administrators. Give an account the admin role in the PocketBase dashboard to open it.</p>
           <a className="button ghost" href="#/">
-            Back to the editor
+            Back to the tools
           </a>
         </div>
       </section>
@@ -182,7 +182,7 @@ export default function AdminPage({ me }: Props) {
                           {rec?.stage || 'Running'}
                           {rec && rec.progress > 0 && (
                             <div className="progress-bar small">
-                              <div className="progress-fill" style={{ width: `${Math.round(rec.progress * 100)}%` }} />
+                              <div className="progress-fill" style={{ transform: `scaleX(${rec.progress || 0})` }} />
                             </div>
                           )}
                         </>

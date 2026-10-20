@@ -1,0 +1,160 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-24T00:00:00Z",
+  "title": "Design System: LayerLift",
+  "extensions": {
+    "colorMeta": {
+      "export-orange": { "role": "primary", "displayName": "Export Orange", "canonical": "#ff7a1a", "tonalRamp": ["#3a1600", "#5e2600", "#8a3a00", "#b85000", "#e36600", "#ff7a1a", "#ffa866", "#ffe0c7"] },
+      "export-orange-hover": { "role": "primary", "displayName": "Export Orange Hover", "canonical": "#ff8f3d" },
+      "export-orange-ink": { "role": "primary", "displayName": "Export Orange Ink", "canonical": "#1d1206" },
+      "focus-blue": { "role": "secondary", "displayName": "Focus Blue", "canonical": "#2f8fef", "tonalRamp": ["#08213a", "#0d345c", "#124a82", "#1a63ad", "#2f8fef", "#5eaaf3", "#98c9f7", "#d6eafc"] },
+      "split-yellow": { "role": "secondary", "displayName": "Split Yellow", "canonical": "#ffd23f", "tonalRamp": ["#3a2c00", "#5c4600", "#836400", "#ad8500", "#d9a800", "#ffd23f", "#ffe285", "#fff4cc"] },
+      "graphite-plate": { "role": "neutral", "displayName": "Graphite Plate", "canonical": "#1c2024", "tonalRamp": ["#0c0e10", "#1c2024", "#262b30", "#3b4046", "#5a626a", "#9aa3ac", "#cfd3d7", "#f4f5f5"] },
+      "plate-raised": { "role": "neutral", "displayName": "Plate Raised", "canonical": "#262b30" },
+      "plate-overlay": { "role": "neutral", "displayName": "Plate Overlay", "canonical": "#0c0e10" },
+      "plate-ink": { "role": "neutral", "displayName": "Plate Ink", "canonical": "#e8ebee" },
+      "plate-muted": { "role": "neutral", "displayName": "Plate Muted", "canonical": "#9aa3ac" },
+      "process-panel": { "role": "neutral", "displayName": "Process Panel", "canonical": "#f4f5f5" },
+      "chrome-grey": { "role": "neutral", "displayName": "Chrome Grey", "canonical": "#dfe1e3" },
+      "field-white": { "role": "neutral", "displayName": "Field White", "canonical": "#ffffff" },
+      "sunk-grey": { "role": "neutral", "displayName": "Sunk Grey", "canonical": "#e9ebec" },
+      "ink": { "role": "neutral", "displayName": "Ink", "canonical": "#15181b" },
+      "muted-ink": { "role": "neutral", "displayName": "Muted Ink", "canonical": "#5a626a" },
+      "line": { "role": "neutral", "displayName": "Line", "canonical": "#cfd3d7" },
+      "line-soft": { "role": "neutral", "displayName": "Line Soft", "canonical": "#e1e4e6" },
+      "danger-red": { "role": "neutral", "displayName": "Danger Red", "canonical": "#d4372a" },
+      "warn-paper": { "role": "neutral", "displayName": "Warn Paper", "canonical": "#fff1c7" },
+      "lifted-black": { "role": "neutral", "displayName": "Lifted Black", "canonical": "#3b4046" }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "The empty-plate prompt only, sentence case, 75% width." },
+      "headline": { "displayName": "Headline", "purpose": "Page titles on My builds, My projects and Admin." },
+      "readout": { "displayName": "Readout", "purpose": "Measured values: print facts and stat tiles." },
+      "title": { "displayName": "Zone Name", "purpose": "Condensed caps naming each panel and sub-zone." },
+      "body": { "displayName": "Body", "purpose": "Parameter rows and all reading text; tabular numerals." },
+      "label": { "displayName": "Label", "purpose": "Table column heads, data-type tags, layer slider end marks." }
+    },
+    "shadows": [
+      { "name": "object-on-plate", "value": "drop-shadow(0 10px 18px rgba(0,0,0,0.45))", "purpose": "Colour map and relief images resting on the plate (CSS filter)." },
+      { "name": "plate-overlay", "value": "0 12px 30px rgba(0,0,0,0.45)", "purpose": "Progress card over the plate." },
+      { "name": "tooltip", "value": "0 6px 16px rgba(0,0,0,0.4)", "purpose": "Colour-map tooltip." },
+      { "name": "menu", "value": "0 10px 28px rgba(0,0,0,0.18)", "purpose": "Account menu over the chrome." },
+      { "name": "dialog", "value": "0 24px 60px rgba(0,0,0,0.3)", "purpose": "Sign-in dialog." },
+      { "name": "spool-rim", "value": "inset 0 0 0 1px rgba(0,0,0,.25), inset 0 0 0 7px rgba(0,0,0,.08), inset 0 0 0 8px rgba(255,255,255,.18)", "purpose": "End-on spool hub ring." }
+    ],
+    "motion": [
+      { "name": "control-state", "value": "0.15s ease-out", "purpose": "Background and border changes on buttons and fields." },
+      { "name": "press", "value": "translateY(1px)", "purpose": "Buttons press down on :active." },
+      { "name": "progress-fill", "value": "transform 0.35s cubic-bezier(0.16, 1, 0.3, 1)", "purpose": "Progress bar fill; indeterminate sweeps 1.3s ease-in-out; both off under reduced motion." },
+      { "name": "wordmark-lift", "value": "1.5s ease-in-out infinite alternate", "purpose": "Splash only: the wordmark layers lift apart and settle; still on failure or reduced motion." }
+    ],
+    "breakpoints": [
+      { "name": "narrow-desktop", "value": "1240px" },
+      { "name": "single-column", "value": "1000px" },
+      { "name": "admin-stack", "value": "900px" },
+      { "name": "phone", "value": "600px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Export Button",
+      "kind": "button",
+      "refersTo": "button-primary-big",
+      "description": "The file-making action, bottom right of the plate strip.",
+      "html": "<button class=\"ds-btn-export\">Export 3MF</button>",
+      "css": ".ds-btn-export { height: 38px; padding: 0 24px; font-family: 'Archivo Variable', 'Archivo', system-ui, sans-serif; font-size: 1rem; font-weight: 700; background: #ff7a1a; color: #1d1206; border: 1px solid #ff7a1a; border-radius: 3px; cursor: pointer; transition: background-color 0.15s ease-out, border-color 0.15s ease-out; } .ds-btn-export:hover { background: #ff8f3d; border-color: #ff8f3d; } .ds-btn-export:active { transform: translateY(1px); } .ds-btn-export:focus-visible { outline: 2px solid #2f8fef; outline-offset: 1px; }"
+    },
+    {
+      "name": "Default Button",
+      "kind": "button",
+      "refersTo": "button-default",
+      "description": "Bordered neutral button; disabled wears the support hatch.",
+      "html": "<button class=\"ds-btn\">Detect</button> <button class=\"ds-btn\" disabled>Merge</button>",
+      "css": ".ds-btn { height: 30px; padding: 0 12px; font-family: 'Archivo Variable', 'Archivo', system-ui, sans-serif; font-size: 14px; font-weight: 600; background: #ffffff; color: #15181b; border: 1px solid #cfd3d7; border-radius: 3px; cursor: pointer; transition: border-color 0.15s ease-out; } .ds-btn:not(:disabled):hover { border-color: #15181b; } .ds-btn:not(:disabled):active { transform: translateY(1px); } .ds-btn:focus-visible { outline: 2px solid #2f8fef; outline-offset: 1px; } .ds-btn:disabled { cursor: default; color: #5a626a; border-color: #e1e4e6; background: repeating-linear-gradient(135deg, transparent 0 4px, rgba(90,98,106,0.16) 4px 5px) #e9ebec; }"
+    },
+    {
+      "name": "Solid Button",
+      "kind": "button",
+      "refersTo": "button-solid",
+      "description": "Ink-filled main step that is not a download.",
+      "html": "<button class=\"ds-btn-solid\">Analyse</button>",
+      "css": ".ds-btn-solid { height: 30px; padding: 0 12px; font-family: 'Archivo Variable', 'Archivo', system-ui, sans-serif; font-size: 14px; font-weight: 600; background: #15181b; color: #f4f5f5; border: 1px solid #15181b; border-radius: 3px; cursor: pointer; transition: background-color 0.15s ease-out; } .ds-btn-solid:hover { background: color-mix(in srgb, #15181b 85%, #ff7a1a); } .ds-btn-solid:active { transform: translateY(1px); } .ds-btn-solid:focus-visible { outline: 2px solid #2f8fef; outline-offset: 1px; }"
+    },
+    {
+      "name": "Parameter Row",
+      "kind": "input",
+      "refersTo": "input-field",
+      "description": "Label left, right-aligned number with its unit inside the field.",
+      "html": "<label class=\"ds-num\"><span>Base</span><span class=\"ds-num-in\"><input type=\"number\" value=\"1.2\"><em>mm</em></span></label>",
+      "css": ".ds-num { display: grid; grid-template-columns: minmax(0,1fr) minmax(7.5rem,46%); align-items: center; gap: 8px; min-height: 32px; font-family: 'Archivo Variable', 'Archivo', system-ui, sans-serif; font-size: 0.93rem; color: #15181b; font-variant-numeric: tabular-nums; } .ds-num > span:first-child { color: #5a626a; } .ds-num-in { position: relative; display: flex; align-items: center; } .ds-num-in input { width: 100%; height: 30px; padding: 0 3.2rem 0 8px; text-align: right; font: inherit; background: #ffffff; border: 1px solid #cfd3d7; border-radius: 3px; caret-color: #ff7a1a; transition: border-color 0.15s ease-out; } .ds-num-in input:hover { border-color: color-mix(in srgb, #15181b 45%, #cfd3d7); } .ds-num-in input:focus-visible { outline: none; border-color: #2f8fef; box-shadow: 0 0 0 2px rgba(47,143,239,0.3); } .ds-num-in em { position: absolute; right: 10px; font-style: normal; font-size: 0.82rem; color: #5a626a; pointer-events: none; }"
+    },
+    {
+      "name": "Segmented Switch",
+      "kind": "chip",
+      "refersTo": "segmented-on",
+      "description": "Joined segments for a choice; the selected one fills with ink.",
+      "html": "<div class=\"ds-seg\"><label class=\"on\">Standard</label><label>Compact</label><label>Stacked</label></div>",
+      "css": ".ds-seg { display: flex; font-family: 'Archivo Variable', 'Archivo', system-ui, sans-serif; } .ds-seg label { flex: 1 1 0; display: flex; align-items: center; justify-content: center; min-height: 30px; padding: 4px 8px; font-size: 0.88rem; font-weight: 600; color: #5a626a; background: #ffffff; border: 1px solid #cfd3d7; margin-left: -1px; cursor: pointer; } .ds-seg label:first-child { margin-left: 0; border-radius: 3px 0 0 3px; } .ds-seg label:last-child { border-radius: 0 3px 3px 0; } .ds-seg label:hover { color: #15181b; } .ds-seg label.on { background: #15181b; border-color: #15181b; color: #f4f5f5; position: relative; z-index: 1; }"
+    },
+    {
+      "name": "Tool Tabs",
+      "kind": "nav",
+      "description": "Top-bar tool switch with the orange underline on the active tool.",
+      "html": "<nav class=\"ds-tools\"><a class=\"on\" href=\"#\">Image to Layers</a><a href=\"#\">Gridfinity</a></nav>",
+      "css": ".ds-tools { display: flex; height: 48px; background: #dfe1e3; border-bottom: 1px solid #cfd3d7; font-family: 'Archivo Variable', 'Archivo', system-ui, sans-serif; } .ds-tools a { display: flex; align-items: center; padding: 0 16px; color: #5a626a; text-decoration: none; font-weight: 600; border-bottom: 2px solid transparent; margin-bottom: -1px; } .ds-tools a:hover { color: #15181b; } .ds-tools a.on { color: #15181b; border-bottom-color: #ff7a1a; } .ds-tools a:focus-visible { outline: 2px solid #2f8fef; outline-offset: 1px; }"
+    },
+    {
+      "name": "Spool Slot",
+      "kind": "custom",
+      "refersTo": "spool",
+      "description": "A filament seen end-on with its slot number, beside its name field.",
+      "html": "<div class=\"ds-slot\"><span class=\"ds-spool\" style=\"background:#2f5d8c;color:#fff\">2</span><input value=\"Blue PLA\"></div>",
+      "css": ".ds-slot { display: grid; grid-template-columns: 34px 1fr; gap: 8px; align-items: center; padding: 8px 0; border-bottom: 1px solid #e1e4e6; font-family: 'Archivo Variable', 'Archivo', system-ui, sans-serif; } .ds-spool { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-stretch: 72%; font-size: 0.9rem; cursor: pointer; box-shadow: inset 0 0 0 1px rgba(0,0,0,.25), inset 0 0 0 7px rgba(0,0,0,.08), inset 0 0 0 8px rgba(255,255,255,.18); } .ds-spool:hover { outline: 2px solid #cfd3d7; outline-offset: 2px; } .ds-slot input { height: 30px; padding: 0 8px; font: inherit; border: 1px solid #cfd3d7; border-radius: 3px; background: #fff; } .ds-slot input:focus-visible { outline: none; border-color: #2f8fef; box-shadow: 0 0 0 2px rgba(47,143,239,0.3); }"
+    },
+    {
+      "name": "Graphite Plate with Layer Slider",
+      "kind": "custom",
+      "refersTo": "layer-badge",
+      "description": "The textured build plate with the vertical layer slider and its orange badge.",
+      "html": "<div class=\"ds-plate\"><div class=\"ds-scrub\"><span class=\"ds-end\">42</span><div class=\"ds-track\"><span class=\"ds-badge\">Layer 18<span>3.60 mm</span></span></div><span class=\"ds-end\">1</span></div></div>",
+      "css": ".ds-plate { position: relative; height: 260px; background-color: #1c2024; background-image: linear-gradient(rgba(255,255,255,0.07) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.07) 1px, transparent 1px); background-size: 40px 40px; background-position: center; font-family: 'Archivo Variable', 'Archivo', system-ui, sans-serif; color: #e8ebee; } .ds-scrub { position: absolute; right: 12px; top: 12px; bottom: 12px; width: 44px; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 8px 0; border-radius: 3px; background: rgba(12,14,16,0.72); border: 1px solid rgba(255,255,255,0.07); } .ds-track { position: relative; flex: 1; width: 4px; background: #ff7a1a; border-radius: 2px; } .ds-end { font-size: 0.72rem; font-weight: 700; font-stretch: 72%; color: #9aa3ac; } .ds-badge { position: absolute; right: 16px; top: 45%; padding: 4px 8px; border-radius: 3px; background: #ff7a1a; color: #1d1206; font-weight: 700; font-size: 0.8rem; white-space: nowrap; line-height: 1.25; text-align: right; } .ds-badge span { display: block; font-weight: 600; font-size: 0.72rem; } .ds-scrub:hover { border-color: rgba(255,255,255,0.14); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Slicer's Preview",
+    "overview": "LayerLift borrows the grammar of OrcaSlicer and Bambu Studio's preview mode, not their chrome. The work sits on a graphite build plate in the middle of the screen, textured with a fine speckle and a faint 40px grid; the model, the colour map or the drawer plan is always the largest thing in view. Flush light process panels either side hold dense parameter rows (label left, value and unit right), separated by hairlines rather than floating as cards. Zones are named in condensed caps, the way a slicer labels its panels.\n\nDensity is deliberate: 30px controls, 32px parameter rows, 4px \"layer\" spacing so sections stack like printed layers. Copy is readouts and zone names (mm, layers, grams, slot numbers), with one status line in the strip under the plate rather than hint paragraphs. Orange is scarce and means one of two things: this makes a file, or this is the thing you have selected. The interface refuses the floating-card, three-column form template it replaced.\n\nThe LayerLift three-layer wordmark (gold, steel and ink layers of the word, each sheared a little further) is a brand commitment generated by `docs/brand/make_logo.py`; it is reproduced, never redrawn or recoloured.",
+    "keyCharacteristics": [
+      "Graphite textured plate at the centre; everything else serves it.",
+      "Flush process panels of hairline-separated parameter rows, not cards.",
+      "Condensed-caps zone names in Archivo at 72% width.",
+      "Orange only for the file-making action, the active selection and the layer slider.",
+      "Filaments are spools: a colour disc carrying its slot number.",
+      "Disabled controls wear a support-pattern hatch.",
+      "Filament colours are shown as a slicer would: near-black lifted to dark grey on the plate."
+    ],
+    "rules": [
+      { "name": "The File-And-Selection Rule", "body": "Orange marks the action that produces a file, the current selection, and the layer slider. Nothing else. Secondary steps that are not a download use the ink-filled solid button; ordinary checkboxes, radios and ranges check in ink.", "section": "colors" },
+      { "name": "The Slicer Display Rule", "body": "A filament's display colour is not its file colour. In 3D, any filament with HSL lightness under 22% is lifted to 22% (saturation cut to 60%); on the 2D plate, anything with relative luminance under 0.02 is drawn as Lifted Black. The real hex always goes into the 3MF.", "section": "colors" },
+      { "name": "The Zone Name Rule", "body": "Condensed caps name a real zone of the tool (a panel, a sub-section, a table column). They are never used as a decorative tag above a heading.", "section": "typography" },
+      { "name": "The Readout Rule", "body": "Say it with numbers and units (mm, layers, g, slot), not sentences. One status line lives in the plate strip; panels do not carry explanatory paragraphs.", "section": "typography" },
+      { "name": "The Flush Panel Rule", "body": "Panels on the tool screen are flush strips divided by hairlines, never raised cards. Shadows are for objects on the plate and for transient overlays.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do keep the model, map or drawer on the graphite plate at the centre and let panels serve it.",
+      "Do step every gap in 4px layers and keep controls at 30px and rows at 32px.",
+      "Do name zones in condensed caps (700, 72% width, 0.06em) and give values with units.",
+      "Do show every filament as a spool or swatch that carries its slot number.",
+      "Do lift near-black filament to dark grey for display on the plate, and write the true colour to the file.",
+      "Do use the support-pattern hatch for disabled labelled controls.",
+      "Do reproduce the three-layer wordmark exactly from `make_logo.py` output."
+    ],
+    "donts": [
+      "Don't use orange for anything other than the file-making action, the active selection and the layer slider.",
+      "Don't float panels as shadowed, rounded cards on the tool screen.",
+      "Don't put a small uppercase tag above a heading; condensed caps are the heading.",
+      "Don't add explanatory hint paragraphs to panels; one status line in the plate strip carries state.",
+      "Don't render a filament's raw near-black on the graphite plate.",
+      "Don't redraw, recolour or restyle the LayerLift wordmark."
+    ]
+  }
+}

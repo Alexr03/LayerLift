@@ -5,16 +5,22 @@
   </picture>
 </h1>
 
-Turn a flat-colour image (logo, badge, icon) into a multi-colour 3D-printable relief.
-Upload an image, list the filaments loaded in your AMS, adjust the colour mapping and
-heights, then download a 3MF that opens in OrcaSlicer as one object with a part per
-filament, each already assigned to its slot.
+Tools for multi-colour 3D printing, each ending in a 3MF that opens in OrcaSlicer with every
+part already assigned to its AMS slot:
+
+- **Image to Layers** turns a flat-colour image (logo, badge, icon) into a multi-colour
+  relief. Upload an image, list the filaments loaded in your AMS, adjust the colour mapping
+  and heights, then download one object with a part per filament.
+- **Gridfinity** plans a drawer: a baseplate cut to the drawer and split to fit your bed, and
+  bins with dividers, scoops, hexagon walls, lite bases, magnet holes and multi-colour labels.
+  See [Gridfinity](#gridfinity).
 
 ```
 backend/relief/   pure-Python library (no web deps): analysis, mapping, geometry, export
 backend/app/      FastAPI service (process pool, job store, static frontend)
 backend/tests/    pytest: acceptance tests, unit tests, API tests, Orca round-trip
 frontend/         React + Vite + TypeScript UI, three.js 3D preview
+frontend/src/gridfinity/ Gridfinity geometry (manifold-3d WASM, in a Web Worker), 3MF export, tests
 deploy/k8s/       k3s manifests (Deployment, Service, Traefik Ingress, optional basic auth)
 deploy/pocketbase/ PocketBase image + schema migrations, for accounts (optional)
 Dockerfile        multi-stage: build frontend, then slim Python 3.12 runtime
@@ -47,8 +53,23 @@ cd frontend && npm install && npm run dev    # UI on :5173, proxies /api to :800
 
 `npm run build` puts the UI in `frontend/dist`, which the API serves automatically.
 
-**Tests:** `cd backend && uv run pytest` (about two minutes). The OrcaSlicer
-round-trip test runs only when OrcaSlicer is installed (set `ORCA_SLICER` to its path if it
+**Development with accounts:** run a persistent PocketBase in Docker and point the dev API at it.
+
+```sh
+# first create .env.dev with the keys listed below
+docker compose -f docker-compose.dev.yml --env-file .env.dev up -d --build   # 127.0.0.1:8090, data in a volume
+cd backend && uv run uvicorn app.main:app --reload --env-file ../.env.dev
+```
+
+`.env.dev` (gitignored) holds `PB_SUPERUSER_EMAIL` / `PB_SUPERUSER_PASSWORD` for the container and
+the matching `LAYERLIFT_POCKETBASE_URL=http://127.0.0.1:8090`, `LAYERLIFT_POCKETBASE_SUPERUSER_EMAIL`,
+`LAYERLIFT_POCKETBASE_SUPERUSER_PASSWORD` and `LAYERLIFT_SESSION_SECRET` for the API. The dashboard is
+at http://localhost:5173/pb/_/. After changing a migration, rerun the `docker compose ... up -d
+--build` line.
+
+**Tests:** `cd backend && uv run pytest` (about two minutes), and `cd frontend && npm test`
+for the Gridfinity geometry (a few seconds). The OrcaSlicer
+round-trip tests (one per tool) run only when OrcaSlicer is installed (set `ORCA_SLICER` to its path if it
 is not in the default location). The accounts test against a real PocketBase runs only when
 `LAYERLIFT_TEST_POCKETBASE_URL` is set; `tests/test_accounts.py` shows how to start one.
 
@@ -208,6 +229,65 @@ replica with `Recreate` and a volume at `/pb/pb_data`. Set `PB_SUPERUSER_EMAIL`,
 LayerLift's three `LAYERLIFT_POCKETBASE_*` variables at its Service. The k3s manifests in
 `deploy/k8s` don't include it yet.
 
+## Gridfinity
+
+The Gridfinity tool (`#/gridfinity`) builds everything in the browser. The geometry is
+[manifold-3d](https://github.com/elalish/manifold) compiled to WebAssembly, running in a Web
+Worker, so the 3D preview updates as you type (a bin takes 50 to 300 ms) and the server does no
+work at all: no queue, no rate limits, no jobs.
+
+- **Start screen.** Open a saved project, or start a drawer project, a single bin or a single
+  baseplate. A drawer project can hold several baseplates (a toolbox with a few drawers, say).
+- **Drawer planner.** Size a baseplate in cells (6 × 6), or enter a drawer's inside size. The grid fills it, the spare room becomes
+  a solid margin (on both sides, or one), and the baseplate is split into pieces that fit your
+  printer's bed. Drag across empty cells to add a bin, drag a bin to move it (in the layout or
+  across the baseplate in the 3D drawer view), drag its corner to resize it. Bins that overlap, run off the grid, are bigger than the bed or taller than the
+  drawer are flagged.
+- **Bins.** Width and depth in cells, height in 7 mm units, stacking lip, compartments across
+  and front to back, finger scoops, label tabs (full width, left, centre or right), magnet
+  and/or screw holes (optionally only at the outer corners), a lite base with hollow feet, and
+  walls with hexagon cut-outs. The holes stay clear of the corners and of where dividers, tabs
+  and scoops meet the walls.
+- **Multi-colour labels.** Each compartment has its own label: text, an icon, or both. Icons are
+  built in (nut, washer, screw, bolt, gear and more) or come from an SVG file. Labels are
+  inlaid flush or raised, in their own filament, and export as a separate part on its own
+  AMS slot.
+- **Baseplates.** Thin (an open grid), with a floor, or with a floor and magnet holes. Split to fit
+  the build plate (or not). Connectors: clips along every seam between pieces, and along the
+  outer edges you pick (back, front, left, right) to join other baseplates. The rails and the clip
+  are measured from Gridfinity Generator's connectable baseplate and clip and match them exactly,
+  so clips from either fit either; "extra clip play" loosens the clip if a printer runs tight. The clips are packaged into the download, and the
+  panel and download bar say how many to print.
+- **Grid.** Each baseplate sets its cell size and height unit (42 × 7 mm, standard Gridfinity, by
+  default); the bins on it follow. Multi-cell bins bridge at 5 mm, so they sit on the chamfers and
+  clear the ridges between cells.
+- **Downloads.** One 3MF per bin design (identical bins share a file named "print N") and per
+  baseplate piece, zipped with a README. STL files are optional. The 3MF layout is the one
+  `backend/relief/export.py` writes (see [OrcaSlicer 3MF format](#orcaslicer-3mf-format)),
+  ported to TypeScript in `frontend/src/gridfinity/export.ts`.
+- **My printers** (`#/printers`, and the printer switch in the top bar). Each printer has its bed
+  size and the filaments loaded in it: one for a single-colour printer, up to 16 with an AMS or
+  another multi-material unit. Gridfinity takes the bed (and "Drawer = bed size") and the slots
+  from the printer in use; Image to Layers can load its filament list from it. Printers are kept
+  in the account (`printers` collection) when signed in, otherwise in the browser, and move into
+  the account on first sign-in. With one filament, inlaid labels become engraved so they still show.
+- **Projects.** Saving is manual (Save, or Ctrl+S): to the account's `projects` collection when
+  signed in, with no limit on how many (a project is its settings as JSON and meshes are always
+  rebuilt, so each record is a few kilobytes), otherwise to a list in the browser. The working
+  copy is also kept in the browser, so a reload never loses edits. Projects are listed on the
+  Gridfinity start screen and under *My projects* (`#/projects`); any project can be exported to
+  a file and imported again.
+- **Editing.** Shift- or ctrl-click selects several bins, and the editor then changes them all;
+  R rotates the selection a quarter turn; Ctrl+A selects every bin. With no bin selected, the
+  corner preview shows the whole baseplate.
+
+The dimensions follow [Gridfinity Rebuilt](https://github.com/kennetek/gridfinity-rebuilt-openscad)
+(`frontend/src/gridfinity/spec.ts`). `npm test` checks the built solids against them: the foot
+profile, a bin seating in a baseplate on its chamfers, a bin stacking on another's lip, magnet
+hole volumes, and that labels exactly fill their pockets. Real prints are still the final test.
+The page's Content-Security-Policy allows `'wasm-unsafe-eval'` so manifold's WebAssembly can
+compile.
+
 ## Design choices
 
 - **The logo** is "LayerLift" in three layers that lift apart towards the right: flat on the
@@ -217,7 +297,8 @@ LayerLift's three `LAYERLIFT_POCKETBASE_*` variables at its Service. The k3s man
   `uv run --no-project --with fonttools --with brotli --with uharfbuzz python docs/brand/make_logo.py`.
 
 - **Frontend:** plain React with local component state, and three.js without a wrapper.
-- **Saved palettes live in the browser** (`localStorage`). There is no server-side persistence.
+- **Saved palettes live in the browser** (`localStorage`). Gridfinity projects are kept in the
+  browser too, and in the account when signed in.
 - **Accounts are optional** (PocketBase, above). Without them the app has no authentication.
   To keep a private instance private, `deploy/k8s/basic-auth.yaml` adds a Traefik basic-auth
   middleware.
@@ -305,3 +386,7 @@ The 7-colour reproduction is also tested: 7 watertight parts, 95% pixel agreemen
 - **Single replica.** Build outputs live on the pod's disk until they expire.
 - **Image size.** The container is about 890 MB, mostly scipy, scikit-learn and OpenCV.
 - Not built yet: keyring loop, magnet recess, edge chamfer and print profile hints.
+- **Gridfinity:** whole cells only (no half-cell bins); baseplate pieces butt together with no
+  connectors; label text uses Barlow Condensed's Latin character set; image logos on labels
+  must be SVG (PNG isn't traced). The Orca test checks that a bin imports with its parts on the
+  right slots, not that it slices.

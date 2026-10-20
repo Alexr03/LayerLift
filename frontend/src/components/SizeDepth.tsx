@@ -74,13 +74,12 @@ export default function SizeDepth({ s, filaments, onChange }: Props) {
       <fieldset className="radio-row">
         <legend>Relief strategy</legend>
         {STRATEGIES.map((o) => (
-          <label key={o.value}>
+          <label key={o.value} title={o.hint}>
             <input type="radio" name="strategy" checked={s.strategy === o.value} onChange={() => onChange({ strategy: o.value })} />
             {o.label}
           </label>
         ))}
       </fieldset>
-      <p className="hint">{STRATEGIES.find((o) => o.value === s.strategy)?.hint}</p>
 
       <fieldset className="radio-row">
         <legend>{s.strategy === 'stacked' ? 'Colour order (bottom to top)' : 'Colour heights'}</legend>

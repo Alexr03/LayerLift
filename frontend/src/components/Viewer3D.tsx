@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
+import { lightScene } from '../lighting'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-import { fmt } from '../palettes'
+import { fmt, inkOn } from '../palettes'
+import { NO_CUT, addSections, cutPlane, displayColour } from '../clip3d'
 
 /** Raise or lower a colour by dragging it on the model (the editor's 3D view only). */
 export interface HeightEdit {
@@ -22,6 +24,8 @@ interface Props {
   url: string
   explode: number // 0..1, lifts each part apart to show the layering
   edit?: HeightEdit
+  clipZ?: number | null // the layer slider's cut, mm
+  onHeight?: (top: number) => void // the loaded model's height, for the layer slider
 }
 
 const MAX_TOP = 50
@@ -35,7 +39,7 @@ function bandOrder(edit: HeightEdit): number[] {
   return edit.parts.map((p) => p.filament).sort((a, b) => edit.built[a] - edit.built[b] || a - b)
 }
 
-export default function Viewer3D({ url, explode, edit }: Props) {
+export default function Viewer3D({ url, explode, edit, clipZ = null, onHeight }: Props) {
   const mountRef = useRef<HTMLDivElement>(null)
   const partsRef = useRef<THREE.Mesh[]>([])
   const renderRef = useRef<() => void>(() => {})
@@ -43,6 +47,12 @@ export default function Viewer3D({ url, explode, edit }: Props) {
   const editRef = useRef(edit)
   editRef.current = edit
   const draggingRef = useRef(false)
+  const planeRef = useRef(cutPlane())
+  const sectionsRef = useRef<ReturnType<typeof addSections> | null>(null)
+  const heightRef = useRef(onHeight)
+  useEffect(() => {
+    heightRef.current = onHeight
+  }, [onHeight])
   const [loaded, setLoaded] = useState(0)
   const [drag, setDrag] = useState<{ x: number; y: number; label: string } | null>(null)
 
@@ -51,18 +61,13 @@ export default function Viewer3D({ url, explode, edit }: Props) {
     const scene = new THREE.Scene()
     const camera = new THREE.PerspectiveCamera(35, 1, 0.5, 5000)
     camera.up.set(0, 0, 1) // the model is Z-up millimetres
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true }) // transparent: the work surface shows through
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, stencil: true }) // transparent: the work surface shows through
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+    renderer.localClippingEnabled = true
     const canvas = renderer.domElement
     mount.appendChild(canvas)
 
-    scene.add(new THREE.HemisphereLight('#ffffff', '#8a8f96', 1.1))
-    const key = new THREE.DirectionalLight('#ffffff', 1.8)
-    key.position.set(-80, -120, 200)
-    scene.add(key)
-    const rim = new THREE.DirectionalLight('#ffffff', 0.6)
-    rim.position.set(120, 150, 80)
-    scene.add(rim)
+    lightScene(scene, renderer)
 
     const render = () => renderer.render(scene, camera)
     renderRef.current = render
@@ -196,6 +201,7 @@ export default function Viewer3D({ url, explode, edit }: Props) {
     const resize = () => {
       const w = mount.clientWidth
       const h = mount.clientHeight
+      if (!w || !h) return // hidden (another page or tab): a zero-size camera would break the cut plane
       renderer.setSize(w, h)
       camera.aspect = w / Math.max(h, 1)
       camera.updateProjectionMatrix()
@@ -215,8 +221,11 @@ export default function Viewer3D({ url, explode, edit }: Props) {
       root.traverse((o) => {
         if ((o as THREE.Mesh).isMesh) {
           const mesh = o as THREE.Mesh
-          const mat = mesh.material as THREE.MeshStandardMaterial
-          mat.flatShading = true
+          // Diffuse only, like printed PLA: a specular sheen greys out dark filaments.
+          const glb = mesh.material as THREE.MeshStandardMaterial
+          const mat = new THREE.MeshLambertMaterial({ color: displayColour(`#${glb.color.getHexString()}`), flatShading: true })
+          glb.dispose()
+          mesh.material = mat
           mat.needsUpdate = true
           parts.push(mesh)
           mesh.userData.baseZ = mesh.position.z
@@ -230,10 +239,13 @@ export default function Viewer3D({ url, explode, edit }: Props) {
           mesh.userData.origZ = z
         }
       })
+      // After the walk: the section fills are meshes too, and adding them mid-walk would recurse.
+      sectionsRef.current = addSections(parts, planeRef.current, scene)
       partsRef.current = parts
       const box = new THREE.Box3().setFromObject(root)
       const size = box.getSize(new THREE.Vector3())
       const centre = box.getCenter(new THREE.Vector3())
+      heightRef.current?.(box.max.z)
       // Back off further on narrow (portrait) viewports so the whole width stays in frame.
       const r = (Math.max(size.x, size.y) * 1.25) / Math.min(1, camera.aspect)
       camera.position.set(centre.x - r * 0.35, centre.y - r * 1.3, centre.z + r * 1.1)
@@ -254,6 +266,9 @@ export default function Viewer3D({ url, explode, edit }: Props) {
       canvas.removeEventListener('pointerup', onUp)
       canvas.removeEventListener('pointercancel', onUp)
       renderer.dispose()
+      // Hand the WebGL context back now: browsers keep only ~16, and a view left to be garbage
+      // collected would eventually push out a live one, leaving that preview blank.
+      renderer.forceContextLoss()
       scene.traverse((o) => {
         const m = o as THREE.Mesh
         if (m.isMesh) {
@@ -273,6 +288,13 @@ export default function Viewer3D({ url, explode, edit }: Props) {
     renderRef.current()
   }, [explode])
 
+  // The layer slider's cut.
+  useEffect(() => {
+    planeRef.current.constant = clipZ ?? NO_CUT
+    sectionsRef.current?.cut(clipZ)
+    renderRef.current()
+  }, [clipZ, loaded, explode])
+
   // Show the settings' heights: after a drag, a typed height, or an undo. Not mid-drag.
   const currentKey = edit ? JSON.stringify(edit.current) : ''
   useEffect(() => {
@@ -284,7 +306,7 @@ export default function Viewer3D({ url, explode, edit }: Props) {
   const active = edit?.disabled ? null : (edit?.active ?? null)
   useEffect(() => {
     for (const mesh of partsRef.current) {
-      const mat = mesh.material as THREE.MeshStandardMaterial
+      const mat = mesh.material as THREE.MeshLambertMaterial
       mat.emissive.set(mesh.userData.filament === active ? '#1c1f24' : '#000000')
     }
     renderRef.current()
@@ -300,21 +322,23 @@ export default function Viewer3D({ url, explode, edit }: Props) {
                 key={p.filament}
                 type="button"
                 className={edit.active === p.filament ? 'swatch on' : 'swatch'}
-                style={{ background: p.hex }}
+                style={{ background: p.hex, color: inkOn(p.hex) }}
                 aria-pressed={edit.active === p.filament}
                 disabled={!!edit.disabled}
-                title={`${p.name}: ${fmt(edit.current[p.filament] ?? 0)} mm`}
+                title={`Slot ${p.filament + 1}, ${p.name}: ${fmt(edit.current[p.filament] ?? 0)} mm. Pick it, then drag it up or down on the model.`}
                 onClick={() => edit.onActive(edit.active === p.filament ? null : p.filament)}
-              />
+              >
+                {p.filament + 1}
+              </button>
             ))}
           </div>
-          <span className="height-hint">
-            {edit.disabled
-              ? edit.disabled
-              : edit.active === null
-                ? 'Pick a colour (or click one on the model), then drag it up or down.'
-                : `Drag ${edit.parts.find((p) => p.filament === edit.active)?.name ?? 'it'} up or down on the model · ${fmt(edit.current[edit.active] ?? 0)} mm`}
-          </span>
+          {(edit.disabled || edit.active !== null) && (
+            <span className="height-hint">
+              {edit.disabled
+                ? edit.disabled
+                : `Drag ${edit.parts.find((p) => p.filament === edit.active)?.name ?? 'it'} up or down · ${fmt(edit.current[edit.active!] ?? 0)} mm`}
+            </span>
+          )}
         </div>
       )}
       {drag && (

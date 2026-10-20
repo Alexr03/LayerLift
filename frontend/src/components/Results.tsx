@@ -1,3 +1,4 @@
+import { FileArchive } from 'lucide-react'
 import type { BuildResult } from '../api'
 import { fmt } from '../palettes'
 import { when } from '../pb'
@@ -65,23 +66,15 @@ export default function Results({ result, stale }: Props) {
         </ul>
       )}
       <div className="downloads">
-        <a className="button primary" href={result.downloads['3mf']} download>
-          Download 3MF for OrcaSlicer
-        </a>
         <a className="button ghost" href={result.downloads['stl-zip']} download>
-          STL files (zip)
+          <FileArchive size={15} /> STL files (zip)
         </a>
       </div>
-      <p className="hint">
-        The 3MF opens as one object with a part per filament, already on the slots listed above.{' '}
-        {result.saved_until ? (
-          <>
-            A copy is saved in <a href="#/builds">My builds</a> until {when(result.saved_until)}.
-          </>
-        ) : (
-          'Downloads expire about an hour after the build.'
-        )}
-      </p>
+      {result.saved_until && (
+        <p className="hint">
+          Saved in <a href="#/builds">My builds</a> until {when(result.saved_until)}.
+        </p>
+      )}
     </section>
   )
 }

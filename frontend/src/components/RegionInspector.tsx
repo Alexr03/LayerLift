@@ -1,4 +1,5 @@
 import type { Analysis, Filament, RegionOverride } from '../api'
+import { X } from 'lucide-react'
 import { fmt, inkOn } from '../palettes'
 
 interface Props {
@@ -51,7 +52,7 @@ export default function RegionInspector(p: Props) {
           {cluster && <span className="chip" style={{ background: cluster.hex }} />} {single ? (isRim ? 'Outer rim' : 'Region') : `${regions.length} areas`}
         </h2>
         <button type="button" className="icon" onClick={p.onClose} aria-label="Clear the selection">
-          ×
+          <X size={16} />
         </button>
       </div>
       <p className="hint">

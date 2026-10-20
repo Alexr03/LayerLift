@@ -22,5 +22,7 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  // Tests run under vitest (Node), which type-strips them itself.
+  "exclude": ["src/**/*.test.ts"]
 }

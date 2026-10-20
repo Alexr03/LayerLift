@@ -85,6 +85,9 @@ export function luminance(hex: string): number {
   return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]
 }
 
+/** A filament colour as drawn on the dark plate: near-black is lifted to dark grey, like a slicer. */
+export const onPlate = (hex: string) => (luminance(hex) < 0.02 ? '#3b4046' : hex)
+
 /** Text colour that stays readable on the given swatch. */
 export const inkOn = (hex: string) => (luminance(hex) > 0.35 ? '#1F2328' : '#FFFFFF')
 

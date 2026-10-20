@@ -1,0 +1,123 @@
+{
+  "title": "Choose the visual world for LayerLift",
+  "question": "The roll assigned Slicer Preview. Keep it, take an alternate, or re-roll.",
+  "options": [
+    {
+      "id": "assigned",
+      "label": "Slicer Preview",
+      "kicker": "THE ROLL",
+      "lineage": "OrcaSlicer / Bambu Studio preview mode: plate, layer slider, colour legend",
+      "thesis": "LayerLift speaks the slicer's own preview language, so the model on the plate leads and every control reads like a print setting.",
+      "palette": ["#1B1F23", "#EEEDEA", "#FF7A1A", "#FFD23F", "#3AA0FF"],
+      "materials": ["textured graphite build plate", "extruded-bead line texture", "layer slider", "colour legend tables"],
+      "viewport": "Graphite build plate fills the centre with the model on it; a vertical layer scrubber on its right edge; a dense settings column on the left like a process panel; a legend strip (slot, colour, height, grams) under the plate; Export as the one orange action.",
+      "risk": "Can read as an Orca clone if the chrome copies Orca instead of borrowing its grammar.",
+      "raised": [
+        {"from": "challenger-ascii", "raise": "One rhythm: spacing and row heights step in layer units, so sections read as stacked layers, not floating cards."},
+        {"from": "challenger-teletext", "raise": "Slot numbers are the address: every coloured thing carries its slot number, and keys 1-9 pick a filament."},
+        {"from": "challenger-starship", "raise": "Short stencil codes name zones (PLATE, SLOT 02, BIN A3) instead of explanatory hint paragraphs."},
+        {"from": "challenger-streetwear", "raise": "Disabled and out-of-bounds states wear a support-pattern hatch rather than fading out."}
+      ]
+    },
+    {
+      "id": "model-pick",
+      "label": "Spool Label",
+      "kicker": "IMPECCABLE’S PICK",
+      "lineage": "filament spool labels and the AMS unit's four numbered windows",
+      "thesis": "Every filament, part and setting is printed like a spool label: colour chip, code, spec table.",
+      "palette": ["#F7F7F5", "#141414", "#00AE42", "#E6E6E1"],
+      "materials": ["white label stock", "spec tables", "barcodes", "AMS slot windows"],
+      "viewport": "Four-slot AMS strip across the top as the filament list, the model below, settings as spec-table label cards.",
+      "risk": "Familiar: close to Bambu Lab's own packaging and app, so it can feel like vendor branding."
+    },
+    {
+      "id": "challenger-kraftwerk",
+      "label": "Wiring Schematic",
+      "verdict": "competitive",
+      "lineage": "Man-Machine era band identity: neon line diagrams on a strict grid",
+      "thesis": "Colours route to AMS slots along lit lines, like PTFE tubes, drawn on a strict grid.",
+      "palette": ["#0E0E0E", "#F3F1EA", "#E0301E", "#F2B705", "#2FA84F"],
+      "materials": ["neon rules", "orthogonal connectors", "tracked caps"],
+      "viewport": "Colour clusters on the left wired to numbered slots on the right; the model sits where the wires meet.",
+      "case": "Holds product clarity for colour-to-slot mapping; loses on audience identification outside that one step.",
+      "risk": "Reads as a band tribute when the wiring isn't doing real work."
+    },
+    {
+      "id": "challenger-ascii",
+      "label": "ASCII Scene",
+      "verdict": "declined",
+      "lineage": "live scenes rendered as typewriter glyphs",
+      "thesis": "The model rendered as glyph density on a strict monospace grid.",
+      "palette": ["#0A0A0A", "#39FF88"],
+      "materials": ["glyph ramp", "phosphor"],
+      "viewport": "The 3D model as a live character grid.",
+      "case": "Hides the colours the product exists to show.",
+      "kept": "One strict rhythm governing the whole composition.",
+      "risk": "Unreadable for colour work."
+    },
+    {
+      "id": "challenger-teletext",
+      "label": "Teletext",
+      "verdict": "declined",
+      "lineage": "broadcast teletext magazines",
+      "thesis": "Pages addressed by number on a 40×24 grid.",
+      "palette": ["#000000", "#FFFF00", "#00FFFF", "#FF0000"],
+      "materials": ["block mosaic", "bitmap face"],
+      "viewport": "Numbered pages instead of panels.",
+      "case": "Novelty over a tool people use for hours.",
+      "kept": "Direct numeric addressing: slot numbers as keys.",
+      "risk": "Retro gimmick."
+    },
+    {
+      "id": "challenger-starship",
+      "label": "Starship Terminal",
+      "verdict": "declined",
+      "lineage": "used-future crew terminals",
+      "thesis": "Phosphor readouts and stencilled equipment codes.",
+      "palette": ["#0B0F0B", "#6CFF6C", "#FFB000", "#DAD6CC"],
+      "materials": ["CRT glass", "hazard plates"],
+      "viewport": "Typed readouts around the model.",
+      "case": "Green phosphor fights the filament colours.",
+      "kept": "Stencil codes that name each zone.",
+      "risk": "Costume."
+    },
+    {
+      "id": "challenger-cloud",
+      "label": "Cloud Quarry",
+      "verdict": "declined",
+      "lineage": "surreal quarry of weather blocks",
+      "thesis": "Sections cut and stacked like blocks.",
+      "palette": ["#F4F6F8", "#6FA8DC", "#8A8F96", "#C9D1D9"],
+      "materials": ["vapor", "cut faces"],
+      "viewport": "Stacked cloud blocks.",
+      "case": "No tie to printers or drawers.",
+      "kept": "Stacking sections with visible gaps, like layers.",
+      "risk": "Whimsy with no function."
+    },
+    {
+      "id": "challenger-streetwear",
+      "label": "Stockroom Quotes",
+      "verdict": "declined",
+      "lineage": "industrial streetwear: quoted caps, hazard stripes, zip-tie tags",
+      "thesis": "Literal quoted labels and hazard diagonals.",
+      "palette": ["#FFFFFF", "#111111", "#FF6A00"],
+      "materials": ["hazard stripes", "zip-tie tags"],
+      "viewport": "Quoted zone names over white and black.",
+      "case": "Fashion irony, not workshop.",
+      "kept": "Hatched pattern for disabled states.",
+      "risk": "Ironic tone."
+    }
+  ],
+  "reroll": {"registers": ["safer", "bolder"]},
+  "buildPath": {"value": "code", "toggle": false},
+  "canon": true,
+  "canonCard": {
+    "label": "The category standard",
+    "thesis": "A clean maker-site tool like MakerWorld or Printables, executed impeccably.",
+    "palette": ["#FFFFFF", "#111827", "#00AE42"],
+    "materials": ["white cards", "rounded controls", "one brand accent"],
+    "viewport": "Top nav, settings sidebar, large 3D canvas, green primary button.",
+    "risk": "Indistinguishable from the competition by design."
+  },
+  "steer": true
+}

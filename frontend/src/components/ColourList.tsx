@@ -1,4 +1,5 @@
 import type { Analysis, Filament } from '../api'
+import { ArrowRight, Pin } from 'lucide-react'
 import { inkOn } from '../palettes'
 
 interface Props {
@@ -16,7 +17,6 @@ export default function ColourList({ analysis, filaments, mapping, locked, onAss
         <h2 id="colours-h">Detected colours</h2>
         <span className="count">{analysis.clusters.length}</span>
       </div>
-      <p className="hint">Suggested filaments keep neighbouring colours apart. Pick one to pin it; the rest re-balance.</p>
       <ul className="clusters">
         {analysis.clusters.map((c) => {
           const f = filaments[mapping[c.id]]
@@ -26,7 +26,7 @@ export default function ColourList({ analysis, filaments, mapping, locked, onAss
               <span className="chip" style={{ background: c.hex }} title={c.hex} />
               <span className="share">{c.share >= 0.01 ? `${Math.round(c.share * 100)}%` : '<1%'}</span>
               <span className="to" aria-hidden>
-                →
+                <ArrowRight size={14} />
               </span>
               <select
                 value={mapping[c.id] ?? 0}
@@ -42,11 +42,11 @@ export default function ColourList({ analysis, filaments, mapping, locked, onAss
               </select>
               {pinned ? (
                 <button type="button" className="icon pin" onClick={() => onAssign(c.id, null)} title="Pinned by you. Click to let LayerLift choose." aria-label={`Unpin colour ${c.hex}`}>
-                  ●
+                  <Pin size={14} fill="currentColor" />
                 </button>
               ) : (
                 <span className="icon pin off" title="Chosen automatically" aria-hidden>
-                  ○
+                  <Pin size={14} />
                 </span>
               )}
             </li>

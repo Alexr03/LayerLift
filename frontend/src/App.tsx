@@ -16,6 +16,7 @@ import {
   getSession,
   suggestMapping,
 } from './api'
+import { Download, Hammer, ImageUp, Redo2, RefreshCw, Sparkles, Undo2, X } from 'lucide-react'
 import { boot } from './bootstrap'
 import { pb } from './pb'
 import { fmt, loadCurrentPalette, snap, storeCurrentPalette } from './palettes'
@@ -28,6 +29,10 @@ import ColourList from './components/ColourList'
 import MyBuilds from './components/MyBuilds'
 import FilamentEditor from './components/FilamentEditor'
 import Footer from './components/Footer'
+import LayerScrubber from './components/LayerScrubber'
+import PrinterSwitch from './components/PrinterSwitch'
+import PrintersPage from './components/PrintersPage'
+import { loadPrinters } from './printers'
 import HumanCheck from './components/HumanCheck'
 import LayerStack from './components/LayerStack'
 import MappingCanvas from './components/MappingCanvas'
@@ -41,17 +46,33 @@ import Wordmark from './components/Wordmark'
 
 // three.js is large; load it only when the 3D view is first opened.
 const Viewer3D = lazy(() => import('./components/Viewer3D'))
+// The Gridfinity tool (and its geometry worker) loads the first time it's opened.
+const GridfinityStudio = lazy(() => import('./components/gridfinity/GridfinityStudio'))
+const ProjectsPage = lazy(() => import('./components/gridfinity/ProjectsPage'))
 
 type View = 'map' | 'original' | '3d' | 'relief'
 type Options = Omit<BuildSettings, 'analysis' | 'filaments' | 'mapping' | 'cluster_heights' | 'region_overrides'>
 
 const ACCEPT = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml']
-type Page = 'editor' | 'builds' | 'admin'
+type Page = 'editor' | 'builds' | 'admin' | 'gridfinity' | 'projects' | 'printers'
 
 function pageFromHash(): Page {
   const h = window.location.hash
-  return h.startsWith('#/builds') ? 'builds' : h.startsWith('#/admin') ? 'admin' : 'editor'
+  if (h.startsWith('#/builds')) return 'builds'
+  if (h.startsWith('#/admin')) return 'admin'
+  if (h.startsWith('#/gridfinity')) return 'gridfinity'
+  if (h.startsWith('#/projects')) return 'projects'
+  if (h.startsWith('#/printers')) return 'printers'
+  return 'editor'
 }
+
+/** The saved project named in #/gridfinity/<id>, if any. */
+const projectFromHash = () => window.location.hash.match(/^#\/gridfinity\/([a-z0-9]+)/i)?.[1] ?? null
+
+const TOOLS: { page: Page; href: string; label: string }[] = [
+  { page: 'editor', href: '#/', label: 'Image to Layers' },
+  { page: 'gridfinity', href: '#/gridfinity', label: 'Gridfinity' },
+]
 
 const DEFAULT_OPTIONS: Options = {
   title: 'LayerLift relief',
@@ -92,6 +113,8 @@ export default function App() {
   const [builtKey, setBuiltKey] = useState('')
   const [view, setView] = useState<View>('map')
   const [explode, setExplode] = useState(0)
+  const [clipZ, setClipZ] = useState<number | null>(null) // the layer slider's cut in 3D
+  const [modelTop, setModelTop] = useState(0)
   const [liftFilament, setLiftFilament] = useState<number | null>(null) // colour picked for dragging in 3D
   const [dragging, setDragging] = useState(false)
   const [version, setVersion] = useState<string | null>(boot?.version ?? null)
@@ -101,6 +124,9 @@ export default function App() {
   const [loadAttempt, setLoadAttempt] = useState(0)
   const [authOpen, setAuthOpen] = useState(false)
   const [page, setPage] = useState<Page>(pageFromHash)
+  const [openProject, setOpenProject] = useState<string | null>(projectFromHash)
+  // Once opened, the Gridfinity tool stays mounted (hidden) so its state survives page changes.
+  const [gridfinityOpened, setGridfinityOpened] = useState(page === 'gridfinity')
   const [gate, setGate] = useState<{ required: boolean; verified: boolean; siteKey: string | null }>({
     required: false,
     verified: true,
@@ -184,10 +210,20 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    const onHash = () => setPage(pageFromHash())
+    const onHash = () => {
+      const p = pageFromHash()
+      setPage(p)
+      setOpenProject(projectFromHash())
+      if (p === 'gridfinity') setGridfinityOpened(true)
+    }
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
   }, [])
+  // Printers come from the account when signed in, from this browser otherwise.
+  const accountId = me ? (me.user?.id ?? '') : null
+  useEffect(() => {
+    if (accountId != null) loadPrinters(accountId || null)
+  }, [accountId])
   const maxMb = me?.limits.max_upload_mb ?? 10
   const needsCheck = gate.required && !gate.verified
   const onVerified = useCallback(() => setGate((g) => ({ ...g, verified: true })), [])
@@ -434,6 +470,7 @@ export default function App() {
     try {
       const r = await buildWithProgress(file, settings, setStatus, ctrl.signal)
       setResult(r)
+      setClipZ(null)
       setBuiltKey(key)
       setView('3d')
     } catch (e) {
@@ -512,7 +549,14 @@ export default function App() {
         <h1 className="brand">
           <Wordmark />
         </h1>
-        <p>Flat-colour artwork in, multi-colour relief out, sliced by colour for your AMS.</p>
+        <nav className="tools" aria-label="Tools">
+          {TOOLS.map((t) => (
+            <a key={t.page} href={t.href} className={page === t.page ? 'tool on' : 'tool'} aria-current={page === t.page ? 'page' : undefined}>
+              {t.label}
+            </a>
+          ))}
+        </nav>
+        <PrinterSwitch />
         {me && <AccountMenu me={me} onSignIn={() => setAuthOpen(true)} />}
       </header>
 
@@ -520,7 +564,7 @@ export default function App() {
         <div className="error" role="alert">
           <span>{error}</span>
           <button type="button" className="icon" onClick={() => setError(null)} aria-label="Dismiss">
-            ×
+            <X size={16} />
           </button>
         </div>
       )}
@@ -528,6 +572,17 @@ export default function App() {
       {me && <AuthDialog open={authOpen} onClose={() => setAuthOpen(false)} />}
       {page === 'builds' && me && <MyBuilds me={me} onSignIn={() => setAuthOpen(true)} />}
       {page === 'admin' && me && <AdminPage me={me} />}
+      {page === 'printers' && me && <PrintersPage me={me} onSignIn={() => setAuthOpen(true)} />}
+      {page === 'projects' && me && (
+        <Suspense fallback={<p className="hint page">Loading…</p>}>
+          <ProjectsPage me={me} onSignIn={() => setAuthOpen(true)} />
+        </Suspense>
+      )}
+      {gridfinityOpened && me && (
+        <Suspense fallback={page === 'gridfinity' ? <ProgressCard title="Loading Gridfinity" progress={null} /> : null}>
+          <GridfinityStudio me={me} active={page === 'gridfinity'} openId={openProject} version={version} onSignIn={() => setAuthOpen(true)} />
+        </Suspense>
+      )}
       <main className="workspace" hidden={page !== 'editor'}>
         <aside className="col setup">
           <section className="panel" aria-labelledby="image-h">
@@ -552,16 +607,16 @@ export default function App() {
                 </div>
               </div>
             ) : (
-              <p className="hint">PNG, JPEG, WebP or SVG up to {maxMb} MB. Logos, badges and icons with flat colours work best.</p>
+              <p className="hint">PNG, JPEG, WebP or SVG, up to {maxMb} MB.</p>
             )}
             {needsCheck && analysis && gate.siteKey && <HumanCheck siteKey={gate.siteKey} onVerified={onVerified} />}
             <div className="row wrap">
-              <button type="button" className={file ? 'ghost' : 'primary'} onClick={() => fileInput.current?.click()} disabled={needsCheck}>
-                {file ? 'Replace image' : 'Choose image'}
+              <button type="button" className={file ? 'ghost' : 'solid'} onClick={() => fileInput.current?.click()} disabled={needsCheck}>
+                <ImageUp size={15} /> {file ? 'Replace image' : 'Choose image'}
               </button>
               {!file && (
                 <button type="button" className="ghost" onClick={loadSample} disabled={needsCheck}>
-                  Try the sample
+                  <Sparkles size={15} /> Try the sample
                 </button>
               )}
             </div>
@@ -607,7 +662,7 @@ export default function App() {
             </div>
             {file && (
               <button type="button" className="ghost" onClick={() => runAnalysis(file, analysisOpts)} disabled={busy != null}>
-                Detect colours again
+                <RefreshCw size={15} /> Detect colours again
               </button>
             )}
           </section>
@@ -650,10 +705,10 @@ export default function App() {
             {analysis && (view === 'map' || view === 'original') && (
               <span className="undo-redo">
                 <button type="button" className="ghost" onClick={undo} disabled={!history.past.length} title="Undo (Ctrl+Z)">
-                  ↶ Undo
+                  <Undo2 size={15} /> Undo
                 </button>
                 <button type="button" className="ghost" onClick={redo} disabled={!history.future.length} title="Redo (Ctrl+Y)">
-                  ↷ Redo
+                  <Redo2 size={15} /> Redo
                 </button>
               </span>
             )}
@@ -687,17 +742,17 @@ export default function App() {
                   <rect x="76" y="56" width="88" height="16" rx="2" fill="#C7962F" />
                   <rect x="100" y="38" width="40" height="16" rx="2" fill="#F2F2EE" stroke="currentColor" strokeWidth="1.5" />
                 </svg>
-                <h2>Drop a logo here</h2>
-                <p>LayerLift finds its colours, matches them to the filaments in your AMS, and stacks each colour at its own height.</p>
+                <h2>Drop artwork on the plate</h2>
+                <p>A flat-colour logo, badge or icon. Each colour is matched to an AMS slot and printed at its own height.</p>
                 {needsCheck && gate.siteKey ? (
                   <HumanCheck siteKey={gate.siteKey} onVerified={onVerified} />
                 ) : (
                   <div className="row center">
-                    <button type="button" className="primary" onClick={() => fileInput.current?.click()}>
-                      Choose image
+                    <button type="button" className="solid" onClick={() => fileInput.current?.click()}>
+                      <ImageUp size={15} /> Choose image
                     </button>
                     <button type="button" className="ghost" onClick={loadSample}>
-                      Try the sample
+                      <Sparkles size={15} /> Try the sample
                     </button>
                   </div>
                 )}
@@ -735,6 +790,8 @@ export default function App() {
                 <Viewer3D
                   url={result.glb_url}
                   explode={explode}
+                  clipZ={clipZ}
+                  onHeight={setModelTop}
                   edit={
                     plan
                       ? {
@@ -765,6 +822,7 @@ export default function App() {
                 />
               </Suspense>
             )}
+            {view === '3d' && result && <LayerScrubber height={modelTop} layer={options.layer_mm} value={clipZ} onChange={setClipZ} />}
             {view === 'relief' && result && <img className="relief-img" src={result.preview_url} alt="Top view of the relief with shading" />}
           </div>
 
@@ -787,9 +845,20 @@ export default function App() {
                     : 'Build to see the 3D model.'
                 : 'Choose an image to start.'}
             </p>
-            <button type="button" className="primary big" onClick={runBuild} disabled={!analysis || busy != null || needsCheck}>
-              {busy === 'building' ? `Building… ${Math.round((status?.progress ?? 0) * 100)}%` : result && !stale ? 'Build again' : 'Build relief'}
-            </button>
+            {result && !stale && busy == null ? (
+              <span className="row">
+                <button type="button" className="ghost" onClick={runBuild} disabled={needsCheck}>
+                  <Hammer size={15} /> Build again
+                </button>
+                <a className="button primary big" href={result.downloads['3mf']} download>
+                  <Download size={17} /> Download 3MF
+                </a>
+              </span>
+            ) : (
+              <button type="button" className="primary big" onClick={runBuild} disabled={!analysis || busy != null || needsCheck}>
+                <Hammer size={17} /> {busy === 'building' ? `Building… ${Math.round((status?.progress ?? 0) * 100)}%` : result ? 'Build again' : 'Build relief'}
+              </button>
+            )}
           </div>
         </section>
 
@@ -848,17 +917,6 @@ export default function App() {
               onMerge={mergeRegions}
               onRemove={(ids) => setRemoved(ids, true)}
             />
-          )}
-          {!analysis && (
-            <section className="panel quiet">
-              <h2>How it works</h2>
-              <ol className="steps">
-                <li>Upload a logo with flat colours.</li>
-                <li>List the filaments loaded in your AMS, in slot order.</li>
-                <li>Check the colour map and click areas to adjust them.</li>
-                <li>Build, then open the 3MF in OrcaSlicer. Every colour is already on its slot.</li>
-              </ol>
-            </section>
           )}
         </aside>
       </main>

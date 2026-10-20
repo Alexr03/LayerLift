@@ -1,3 +1,4 @@
+import { History, LogIn } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { Me } from '../api'
 import { pb } from '../pb'
@@ -13,7 +14,7 @@ function hours(h: number): string {
   return h === 1 ? '1 hour' : `${h} hours`
 }
 
-/** "Sign in", or the signed-in account with its limits and links to My builds / Admin. */
+/** "Sign in", or the signed-in account with its limits and links to the tools, My builds, My projects and Admin. */
 export default function AccountMenu({ me, onSignIn }: Props) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
@@ -35,10 +36,10 @@ export default function AccountMenu({ me, onSignIn }: Props) {
     return (
       <div className="account">
         <a className="button ghost" href="#/builds" title="Builds are kept for signed-in accounts">
-          My builds
+          <History size={15} /> My builds
         </a>
-        <button type="button" className="primary" onClick={onSignIn}>
-          Sign in
+        <button type="button" className="solid" onClick={onSignIn}>
+          <LogIn size={15} /> Sign in
         </button>
       </div>
     )
@@ -69,10 +70,19 @@ export default function AccountMenu({ me, onSignIn }: Props) {
             <span>Builds kept {hours(l.retention_hours)}</span>
           </div>
           <button type="button" role="menuitem" onClick={() => go('#/')}>
-            Editor
+            Image to Layers
+          </button>
+          <button type="button" role="menuitem" onClick={() => go('#/gridfinity')}>
+            Gridfinity
           </button>
           <button type="button" role="menuitem" onClick={() => go('#/builds')}>
             My builds
+          </button>
+          <button type="button" role="menuitem" onClick={() => go('#/projects')}>
+            My projects
+          </button>
+          <button type="button" role="menuitem" onClick={() => go('#/printers')}>
+            My printers
           </button>
           {me.user.role === 'admin' && (
             <button type="button" role="menuitem" onClick={() => go('#/admin')}>

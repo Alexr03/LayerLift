@@ -1,3 +1,4 @@
+import { Download, FileArchive, LogIn, Trash2 } from 'lucide-react'
 import { Suspense, lazy, useEffect, useState } from 'react'
 import type { Me } from '../api'
 import { fmt } from '../palettes'
@@ -72,11 +73,11 @@ export default function MyBuilds({ me, onSignIn }: Props) {
             later. Accounts also get higher limits.
           </p>
           <div className="row">
-            <button type="button" className="primary" onClick={onSignIn}>
-              Sign in or create an account
+            <button type="button" className="solid" onClick={onSignIn}>
+              <LogIn size={15} /> Sign in or create an account
             </button>
             <a className="button ghost" href="#/">
-              Back to the editor
+              Back to Image to Layers
             </a>
           </div>
         </div>
@@ -105,7 +106,7 @@ export default function MyBuilds({ me, onSignIn }: Props) {
             : `The ${me.limits.label} plan doesn't keep build files, but your recent builds are listed here.`}
         </p>
         <a className="button ghost" href="#/">
-          Back to the editor
+          Back to Image to Layers
         </a>
       </div>
       {error && <p className="hint danger">{error}</p>}
@@ -131,7 +132,7 @@ export default function MyBuilds({ me, onSignIn }: Props) {
                   {live && (
                     <div className="build-progress">
                       <div className="progress-bar">
-                        <div className="progress-fill" style={{ width: `${Math.round((job.progress || 0) * 100)}%` }} />
+                        <div className="progress-fill" style={{ transform: `scaleX(${job.progress || 0})` }} />
                       </div>
                       <span className="hint">{job.stage || 'Waiting in line'}</span>
                     </div>
@@ -148,12 +149,12 @@ export default function MyBuilds({ me, onSignIn }: Props) {
                   <div className="row wrap build-actions">
                     {job.model_3mf && (
                       <a className="button primary" href={file(job, job.model_3mf, true)}>
-                        3MF
+                        <Download size={15} /> 3MF
                       </a>
                     )}
                     {job.stl_zip && (
                       <a className="button ghost" href={file(job, job.stl_zip, true)}>
-                        STL zip
+                        <FileArchive size={15} /> STL zip
                       </a>
                     )}
                     {job.glb && (
@@ -163,7 +164,7 @@ export default function MyBuilds({ me, onSignIn }: Props) {
                     )}
                     {!live && (
                       <button type="button" className="ghost danger" onClick={() => remove(job)}>
-                        Delete
+                        <Trash2 size={15} /> Delete
                       </button>
                     )}
                   </div>

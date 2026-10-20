@@ -1,5 +1,7 @@
 import { useState } from 'react'
+import { ChevronDown, ChevronUp, Plus, Save, Trash2, X } from 'lucide-react'
 import type { Filament } from '../api'
+import { usePrinters } from '../printers'
 import { PRESETS, type SavedPalette, deletePalette, fmt, inkOn, loadSavedPalettes, savePalette } from '../palettes'
 
 interface Props {
@@ -38,8 +40,18 @@ export default function FilamentEditor({ filaments, layer, base, manualHeights, 
     onChange([...filaments, { name: `Slot ${filaments.length + 1}`, hex: '#808080', height_mm: top + 0.4, start_from_bed: false }])
   }
 
+  const { printers } = usePrinters()
+
   const applyPalette = (value: string) => {
     const [kind, name] = value.split(':', 2)
+    if (kind === 'printer') {
+      const pr = printers.find((x) => x.id === name)
+      if (!pr) return
+      // Heights step up a little per slot; the relief's own rules take it from there.
+      const next = pr.filaments.map((f, i) => ({ name: f.name, hex: f.hex, height_mm: +(base + 0.8 + i * 0.4).toFixed(2), start_from_bed: false }))
+      onChange(next, filaments.map(() => null))
+      return
+    }
     const source = kind === 'preset' ? PRESETS : saved
     const p = source.find((x) => x.name === name)
     if (!p) return
@@ -53,6 +65,15 @@ export default function FilamentEditor({ filaments, layer, base, manualHeights, 
         <h2 id="filaments-h">Filaments</h2>
         <select className="palette-select" value="" onChange={(e) => applyPalette(e.target.value)} aria-label="Load a palette">
           <option value="">Load palette…</option>
+          {printers.length > 0 && (
+            <optgroup label="My printers">
+              {printers.map((p) => (
+                <option key={p.id} value={`printer:${p.id}`}>
+                  {p.name}
+                </option>
+              ))}
+            </optgroup>
+          )}
           <optgroup label="Presets">
             {PRESETS.map((p) => (
               <option key={p.name} value={`preset:${p.name}`}>
@@ -71,7 +92,6 @@ export default function FilamentEditor({ filaments, layer, base, manualHeights, 
           )}
         </select>
       </div>
-      <p className="hint">One row per AMS slot, in slot order. Heights are the top of each colour.</p>
 
       <ol className="slots">
         {filaments.map((f, i) => (
@@ -104,13 +124,13 @@ export default function FilamentEditor({ filaments, layer, base, manualHeights, 
             </label>
             <span className="slot-actions">
               <button type="button" className="icon" onClick={() => move(i, -1)} disabled={i === 0} aria-label={`Move slot ${i + 1} up`}>
-                ↑
+                <ChevronUp size={14} />
               </button>
               <button type="button" className="icon" onClick={() => move(i, 1)} disabled={i === filaments.length - 1} aria-label={`Move slot ${i + 1} down`}>
-                ↓
+                <ChevronDown size={14} />
               </button>
               <button type="button" className="icon" onClick={() => remove(i)} disabled={filaments.length <= 1} aria-label={`Remove slot ${i + 1}`}>
-                ×
+                <X size={14} />
               </button>
             </span>
           </li>
@@ -118,17 +138,17 @@ export default function FilamentEditor({ filaments, layer, base, manualHeights, 
       </ol>
       <div className="row">
         <button type="button" className="ghost" onClick={add} disabled={filaments.length >= 16}>
-          Add slot
+          <Plus size={15} /> Add slot
         </button>
       </div>
       <div className="save-row">
         <input value={paletteName} onChange={(e) => setPaletteName(e.target.value)} aria-label="Palette name" maxLength={40} />
         <button type="button" className="ghost" onClick={() => paletteName.trim() && setSaved(savePalette(paletteName.trim(), filaments))}>
-          Save palette
+          <Save size={15} /> Save palette
         </button>
         {saved.some((p) => p.name === paletteName.trim()) && (
           <button type="button" className="ghost danger" onClick={() => setSaved(deletePalette(paletteName.trim()))}>
-            Delete
+            <Trash2 size={15} /> Delete
           </button>
         )}
       </div>

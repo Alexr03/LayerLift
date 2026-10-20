@@ -23,7 +23,7 @@ export default function ProgressCard({ title, progress, detail }: Props) {
           aria-valuenow={pct ?? undefined}
           aria-label={title}
         >
-          <div className="progress-fill" style={pct == null ? undefined : { width: `${Math.max(2, pct)}%` }} />
+          <div className="progress-fill" style={pct == null ? undefined : { transform: `scaleX(${Math.max(2, pct) / 100})` }} />
         </div>
         {detail && <p className="hint">{detail}</p>}
       </div>

@@ -8,6 +8,7 @@ import hashlib
 import http
 import json
 import logging
+import mimetypes
 import secrets
 import time
 from dataclasses import dataclass
@@ -157,9 +158,15 @@ async def validation_handler(_: Request, exc: RequestValidationError):
     return _error(422, "invalid_request", "The request is invalid.", {"errors": json.loads(json.dumps(exc.errors(), default=str))})
 
 
+# Browsers only stream-compile WebAssembly served as application/wasm; not every system's MIME
+# table knows the extension.
+mimetypes.add_type("application/wasm", ".wasm")
+
 # Turnstile runs from challenges.cloudflare.com; everything else is served by this app.
+# 'wasm-unsafe-eval' lets the Gridfinity tool compile manifold-3d (WebAssembly); it allows
+# WebAssembly only, not eval of JavaScript.
 CSP = (
-    "default-src 'self'; script-src 'self' https://challenges.cloudflare.com; "
+    "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://challenges.cloudflare.com; "
     "frame-src https://challenges.cloudflare.com; connect-src 'self'; img-src 'self' data: blob:; "
     "style-src 'self' 'unsafe-inline'; font-src 'self'; worker-src 'self' blob:; object-src 'none'; "
     "base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
@@ -740,7 +747,11 @@ async def pocketbase_proxy(path: str, request: Request):
     headers = [(k, v) for k, v in request.headers.items() if k.lower() not in _HOP]
     headers += [("x-forwarded-for", _client(request)), ("x-forwarded-proto", request.url.scheme), ("x-forwarded-host", request.url.netloc)]
     url = f"{pb.url}/{path}" + (f"?{request.url.query}" if request.url.query else "")
-    body = request.stream() if request.method in ("POST", "PUT", "PATCH", "DELETE") else None
+    # Forward a body only when there is one, and never on DELETE (PocketBase takes none there). An
+    # empty body streamed upstream goes out chunked, and PocketBase answers that with a 400.
+    length = request.headers.get("content-length")
+    has_body = "transfer-encoding" in request.headers or (length is not None and length != "0")
+    body = request.stream() if has_body and request.method in ("POST", "PUT", "PATCH") else None
     upstream = pb.proxy_client.build_request(request.method, url, headers=headers, content=body)
     try:
         resp = await pb.proxy_client.send(upstream, stream=True)

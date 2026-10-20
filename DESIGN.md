@@ -1,0 +1,290 @@
+---
+name: LayerLift
+description: Flat artwork and measured drawers to multi-colour 3MF files, laid out like a slicer's preview.
+colors:
+  export-orange: "#ff7a1a"
+  export-orange-hover: "#ff8f3d"
+  export-orange-ink: "#1d1206"
+  graphite-plate: "#1c2024"
+  plate-raised: "#262b30"
+  plate-overlay: "#0c0e10"
+  plate-ink: "#e8ebee"
+  plate-muted: "#9aa3ac"
+  process-panel: "#f4f5f5"
+  chrome-grey: "#dfe1e3"
+  field-white: "#ffffff"
+  sunk-grey: "#e9ebec"
+  ink: "#15181b"
+  muted-ink: "#5a626a"
+  line: "#cfd3d7"
+  line-soft: "#e1e4e6"
+  focus-blue: "#2f8fef"
+  split-yellow: "#ffd23f"
+  danger-red: "#d4372a"
+  warn-paper: "#fff1c7"
+  lifted-black: "#3b4046"
+typography:
+  display:
+    fontFamily: "'Archivo Variable', 'Archivo', system-ui, sans-serif"
+    fontSize: "2.1rem"
+    fontWeight: 700
+    lineHeight: 1
+    letterSpacing: "0.01em"
+    fontVariation: "'wdth' 75"
+  headline:
+    fontFamily: "'Archivo Variable', 'Archivo', system-ui, sans-serif"
+    fontSize: "1.6rem"
+    fontWeight: 700
+    lineHeight: 1.4
+    letterSpacing: "0"
+    fontVariation: "'wdth' 75"
+  readout:
+    fontFamily: "'Archivo Variable', 'Archivo', system-ui, sans-serif"
+    fontSize: "1.3rem"
+    fontWeight: 700
+    lineHeight: 1.4
+    fontVariation: "'wdth' 80"
+    fontFeature: "'tnum'"
+  title:
+    fontFamily: "'Archivo Variable', 'Archivo', system-ui, sans-serif"
+    fontSize: "0.8rem"
+    fontWeight: 700
+    lineHeight: 1.4
+    letterSpacing: "0.06em"
+    fontVariation: "'wdth' 72"
+  body:
+    fontFamily: "'Archivo Variable', 'Archivo', system-ui, sans-serif"
+    fontSize: "14px"
+    fontWeight: 400
+    lineHeight: 1.4
+    fontFeature: "'tnum'"
+  label:
+    fontFamily: "'Archivo Variable', 'Archivo', system-ui, sans-serif"
+    fontSize: "0.72rem"
+    fontWeight: 700
+    lineHeight: 1.4
+    letterSpacing: "0.05em"
+    fontVariation: "'wdth' 72"
+rounded:
+  chip: "2px"
+  control: "3px"
+  spool: "50%"
+spacing:
+  layer: "4px"
+  layer-2: "8px"
+  layer-3: "12px"
+  layer-4: "16px"
+  layer-5: "20px"
+  layer-6: "24px"
+components:
+  button-primary:
+    backgroundColor: "{colors.export-orange}"
+    textColor: "{colors.export-orange-ink}"
+    rounded: "{rounded.control}"
+    padding: "0 12px"
+    height: "30px"
+  button-primary-hover:
+    backgroundColor: "{colors.export-orange-hover}"
+  button-primary-big:
+    backgroundColor: "{colors.export-orange}"
+    textColor: "{colors.export-orange-ink}"
+    rounded: "{rounded.control}"
+    padding: "0 24px"
+    height: "38px"
+  button-solid:
+    backgroundColor: "{colors.ink}"
+    textColor: "{colors.process-panel}"
+    rounded: "{rounded.control}"
+    padding: "0 12px"
+    height: "30px"
+  button-default:
+    backgroundColor: "{colors.field-white}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.control}"
+    padding: "0 12px"
+    height: "30px"
+  button-icon:
+    backgroundColor: "transparent"
+    textColor: "{colors.muted-ink}"
+    rounded: "{rounded.control}"
+    size: "28px"
+  input-field:
+    backgroundColor: "{colors.field-white}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.control}"
+    padding: "0 8px"
+    height: "30px"
+  segmented-on:
+    backgroundColor: "{colors.ink}"
+    textColor: "{colors.process-panel}"
+    height: "30px"
+  spool:
+    textColor: "{colors.ink}"
+    typography: "{typography.title}"
+    rounded: "{rounded.spool}"
+    size: "34px"
+  layer-badge:
+    backgroundColor: "{colors.export-orange}"
+    textColor: "{colors.export-orange-ink}"
+    rounded: "{rounded.control}"
+    padding: "4px 8px"
+  plate-overlay-card:
+    backgroundColor: "{colors.plate-overlay}"
+    textColor: "{colors.plate-ink}"
+    rounded: "{rounded.control}"
+    padding: "12px 16px 16px"
+---
+
+# Design System: LayerLift
+
+## Overview
+
+**Creative North Star: "The Slicer's Preview"**
+
+LayerLift borrows the grammar of OrcaSlicer and Bambu Studio's preview mode, not their chrome. The work sits on a graphite build plate in the middle of the screen, textured with a fine speckle and a faint 40px grid; the model, the colour map or the drawer plan is always the largest thing in view. Flush light process panels either side hold dense parameter rows (label left, value and unit right), separated by hairlines rather than floating as cards. Zones are named in condensed caps, the way a slicer labels its panels.
+
+Density is deliberate: 30px controls, 32px parameter rows, 4px "layer" spacing so sections stack like printed layers. Copy is readouts and zone names (mm, layers, grams, slot numbers), with one status line in the strip under the plate rather than hint paragraphs. Orange is scarce and means one of two things: this makes a file, or this is the thing you have selected. The interface refuses the floating-card, three-column form template it replaced.
+
+The LayerLift three-layer wordmark (gold, steel and ink layers of the word, each sheared a little further) is a brand commitment generated by `docs/brand/make_logo.py`; it is reproduced, never redrawn or recoloured.
+
+**Key Characteristics:**
+- Graphite textured plate at the centre; everything else serves it.
+- Flush process panels of hairline-separated parameter rows, not cards.
+- Condensed-caps zone names in Archivo at 72% width.
+- Orange only for the file-making action, the active selection and the layer slider.
+- Filaments are spools: a colour disc carrying its slot number.
+- Disabled controls wear a support-pattern hatch.
+- Filament colours are shown as a slicer would: near-black lifted to dark grey on the plate.
+
+## Colors
+
+A cool grey-and-graphite workshop palette with a single hot orange signal and three utility hues that each have one job.
+
+### Primary
+- **Export Orange** (`export-orange`): the Export/Build action (bottom right of the plate strip), the active tool tab and view tab underline, the selected swatch ring, the selected bin outline and resize handles in the drawer planner, the layer slider and its badge, the height-drag label, the progress fill and percentage, the text caret, and the pin marker. Hover lifts to **Export Orange Hover**; text on orange is **Export Orange Ink**, never white. A 16% mix (`accent-soft`) tints the selected row and the region inspector.
+
+### Secondary
+- **Focus Blue** (`focus-blue`): keyboard focus only (2px outline, or border plus a 30% ring on fields). It is not a brand colour and never fills anything.
+- **Split Yellow** (`split-yellow`): baseplate split lines in the drawer planner (dashed) and the stale-result badge.
+
+### Neutral
+- **Graphite Plate** (`graphite-plate`): the stage background; with **Plate Raised** (`plate-raised`) for fields and panels that sit on it. On the plate the neutral roles are re-scoped: lines become white at 14% and 8%, text is **Plate Ink** and **Plate Muted**.
+- **Plate Overlay** (`plate-overlay`): tooltips, the layer slider rail, height swatch tray, progress card and inset buttons over the plate, used at 70-92% opacity.
+- **Process Panel** (`process-panel`): the left and right columns, dialogs, menus, page panels.
+- **Chrome Grey** (`chrome-grey`): top bar and status bar, a step darker than the panels.
+- **Field White** (`field-white`) and **Sunk Grey** (`sunk-grey`): inputs and default buttons; hover and quiet fills inside panels.
+- **Ink** (`ink`) and **Muted Ink** (`muted-ink`): text and labels. Ink also fills the selected segment, the solid button, and the accent-color of ordinary checkboxes, radios and ranges.
+- **Line** (`line`) and **Line Soft** (`line-soft`): column and panel borders; row dividers within a panel.
+- **Danger Red** (`danger-red`) and **Warn Paper** (`warn-paper`): error strip and invalid bins; build warnings.
+- **Lifted Black** (`lifted-black`): what a near-black filament is drawn as on the 2D plate.
+
+Dark scheme (`prefers-color-scheme: dark`) keeps the same roles: chrome `#0f1113`, panel `#171a1d`, plate `#0c0e10`, ink `#e6e8ea`; orange and the utility hues do not change.
+
+### Named Rules
+**The File-And-Selection Rule.** Orange marks the action that produces a file, the current selection, and the layer slider. Nothing else. Secondary steps that are not a download use the ink-filled solid button; ordinary checkboxes, radios and ranges check in ink.
+
+**The Slicer Display Rule.** A filament's display colour is not its file colour. In 3D, any filament with HSL lightness under 22% is lifted to 22% (saturation cut to 60%); on the 2D plate, anything with relative luminance under 0.02 is drawn as Lifted Black. The real hex always goes into the 3MF.
+
+## Typography
+
+**Display Font:** Archivo Variable (width axis), with Archivo and system-ui as fallbacks
+**Body Font:** the same Archivo Variable at normal width
+
+**Character:** One grotesque family used on its width axis: condensed (72-80%) and bold for names and numbers, normal width for everything you read. Tabular numerals are on globally, so readouts never jitter.
+
+### Hierarchy
+- **Display** (700, 2.1rem, 75% width, line-height 1): the empty-plate prompt only, in sentence case.
+- **Headline** (700, 1.6rem, 75% width): page titles on My builds, My projects and Admin, sentence case.
+- **Readout** (700, 1.3rem at 80% width; stats 1.9rem at 75%): measured values in the Print facts and admin stat tiles.
+- **Title** (700, 0.8rem, 72% width, uppercase, 0.06em): zone names heading each panel (FILAMENTS, SIZE AND DEPTH, BIN, DRAWER) and their sub-zones.
+- **Body** (400, 14px, line-height 1.4): parameter rows at 0.93rem, secondary text at 0.86rem; field labels 600.
+- **Label** (700, 0.72rem, 72% width, uppercase, 0.05em): table column heads, data-type tags, layer slider end marks.
+
+### Named Rules
+**The Zone Name Rule.** Condensed caps name a real zone of the tool (a panel, a sub-section, a table column). They are never used as a decorative tag above a heading.
+
+**The Readout Rule.** Say it with numbers and units (mm, layers, g, slot), not sentences. One status line lives in the plate strip; panels do not carry explanatory paragraphs.
+
+## Layout
+
+The tool screen is a fixed-height shell: a 48px top bar (wordmark, tool tabs, account), then a three-column workspace of 340px settings, flexible plate, 360px info (300/320px under 1240px). When the info column has nothing in it, it disappears and the plate takes the room. A 28px status bar closes the screen.
+
+The plate column stacks a 40px view-tab strip, the textured canvas (padding `clamp(1rem, 3vw, 2.5rem)`), and a 56px build strip darker than the plate with status left and the orange action right. In 3D the layer slider runs down the plate's right edge (44px, inset 12px).
+
+Spacing steps in layers of 4px (`--l`); gaps and paddings are multiples, including halves (6px, 10px, 14px). Panels pad 16px 16px 20px with 10px between rows; parameter rows are a two-column grid (label, then a value column of at least 7.5rem or 46%).
+
+Under 1000px the workspace becomes one column with the plate first (min(78vh, 640px)), then the info column, then settings; tool tabs take their own row. Under 600px the view tabs keep their row and undo/redo and the layer spread drop to a second one; the build strip's status line takes its own row.
+
+Account pages (builds, projects, admin) scroll in a padded page (24px, 32px bottom) with bordered panels and an auto-fill grid of 19rem build cards whose thumbnails sit on graphite.
+
+## Elevation & Depth
+
+Flat by default. The shell and panels have no shadows; structure comes from tone (chrome, panel, plate) and 1px hairlines. Depth belongs to things on or over the plate: the artwork and relief images cast a soft drop shadow onto the graphite, and overlays (tooltips, progress card, menus, dialogs) lift with a single diffuse shadow.
+
+### Shadow Vocabulary
+- **Object on plate** (`filter: drop-shadow(0 10px 18px rgba(0,0,0,0.45))`): the colour map and relief images resting on the plate.
+- **Plate overlay** (`box-shadow: 0 12px 30px rgba(0,0,0,0.45)`): progress card; tooltips use `0 6px 16px rgba(0,0,0,0.4)`.
+- **Menu** (`box-shadow: 0 10px 28px rgba(0,0,0,0.18)`): the account menu over the light chrome.
+- **Dialog** (`box-shadow: 0 24px 60px rgba(0,0,0,0.3)`): the sign-in dialog, over a `rgba(12,14,16,0.6)` backdrop.
+- **Spool rim** (`box-shadow: inset 0 0 0 1px rgba(0,0,0,.25), inset 0 0 0 7px rgba(0,0,0,.08), inset 0 0 0 8px rgba(255,255,255,.18)`): the end-on spool's hub ring.
+
+### Named Rules
+**The Flush Panel Rule.** Panels on the tool screen are flush strips divided by hairlines, never raised cards. Shadows are for objects on the plate and for transient overlays.
+
+## Shapes
+
+Nearly square. Controls, fields, tooltips and panels use a 3px radius; colour chips and tags 2px. The only round things are filament-bearing: spools, swatches, avatars and step numbers are full circles. Segmented switches share borders (-1px overlap) and round only their outer ends. View and tool tabs are unrounded with a 2px bottom rule. In the 3D view, the layer cut is capped with flat section faces (stencil-buffer caps in a darker shade of the part colour) and single-colour parts carry faint white feature edges at 16% so their faces stay legible.
+
+## Components
+
+### Buttons
+Tactile but quiet: bordered, dense, and they press 1px down.
+- **Shape:** gently squared (3px), 30px tall, 12px horizontal padding, weight 600; the big export action is 38px tall with 24px padding at weight 700.
+- **Primary:** Export Orange with Export Orange Ink text. Reserved for Build and Export (the big variant in the plate strip) and for downloading a finished 3MF.
+- **Solid:** Ink fill with panel-colour text, for a main step that is not a download; hover mixes 15% orange into the ink.
+- **Default / Ghost:** Field White with a Line border (ghost is transparent); hover darkens the border to Ink.
+- **Icon:** 28px, transparent and muted until hover, which adds a border and Sunk fill.
+- **Disabled:** labelled buttons wear the support hatch (135deg, 1px muted stripe every 5px, over Sunk) and muted text; icon-only buttons dim to 35%.
+
+### Inputs / Fields
+- **Style:** 30px, Field White, 1px Line border, 3px radius, 8px padding; numbers right-aligned with the unit (mm, °) set muted inside the right edge. The caret is orange.
+- **Hover / Focus:** border moves toward Ink on hover; focus sets a Focus Blue border and a 2px 30% blue ring.
+- **Disabled:** Sunk fill, muted text.
+- **Select:** native appearance removed, a small chevron at right.
+
+### Segmented Switches
+Choices (strategy, modes) are one row of joined 30px segments rather than radio dots. Unselected segments are Field White with muted 600 text; the selected one fills with Ink.
+
+### Navigation
+- **Tool tabs** (top bar) and **view tabs** (top of the plate) are unrounded text tabs, muted at rest, full ink on hover, with a 2px Export Orange underline when on. Disabled view tabs wear a faint hatch on the plate.
+
+### Spools (signature)
+A filament slot is a 34px circle in the filament's colour seen end-on, with a hub ring (see Spool rim) and its slot number in condensed 800 weight, in ink or white depending on the colour's luminance. Clicking it opens the colour picker. Unused slots dim to 45%. The same round swatch (26-30px) is used to choose filaments elsewhere; the active one gets a 2px orange ring offset 2px.
+
+### Layer Slider (signature)
+A vertical range on the plate's right edge inside a Plate Overlay rail, orange-accented, with condensed end marks and an orange badge to its left reading the current layer and height. Scrubbing cuts every part at that height with capped sections.
+
+### Plate Strip and Progress
+The strip under the plate carries one status line and the actions, orange last. Progress floats in a Plate Overlay card whose 10px bar fills with orange "extruded lines" (5px orange, 1px darker orange), sweeping when indeterminate and still under reduced motion.
+
+### Lists and Tables
+Colour, slot and bin lists are hairline-divided grid rows (no cards). The selected bin row takes the 16% orange tint. Tables use condensed-caps column heads over hairline rows with right-aligned numbers.
+
+## Do's and Don'ts
+
+### Do:
+- **Do** keep the model, map or drawer on the graphite plate at the centre and let panels serve it.
+- **Do** step every gap in 4px layers and keep controls at 30px and rows at 32px.
+- **Do** name zones in condensed caps (700, 72% width, 0.06em) and give values with units.
+- **Do** show every filament as a spool or swatch that carries its slot number.
+- **Do** lift near-black filament to dark grey for display on the plate, and write the true colour to the file.
+- **Do** use the support-pattern hatch for disabled labelled controls.
+- **Do** reproduce the three-layer wordmark exactly from `make_logo.py` output.
+
+### Don't:
+- **Don't** use orange for anything other than the file-making action, the active selection and the layer slider.
+- **Don't** float panels as shadowed, rounded cards on the tool screen.
+- **Don't** put a small uppercase tag above a heading; condensed caps are the heading.
+- **Don't** add explanatory hint paragraphs to panels; one status line in the plate strip carries state.
+- **Don't** render a filament's raw near-black on the graphite plate.
+- **Don't** redraw, recolour or restyle the LayerLift wordmark.

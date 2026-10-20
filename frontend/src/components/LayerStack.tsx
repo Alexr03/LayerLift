@@ -65,7 +65,7 @@ export default function LayerStack({ bands, filaments, layer, base, top, changes
         })}
       </svg>
       <p className="hint">
-        {fmt(top)} mm tall, {layers} layers at {fmt(layer)} mm. The dashed line is the top of the {fmt(base)} mm base.
+        {fmt(top)} mm · {layers} layers · {fmt(base)} mm base
       </p>
     </section>
   )

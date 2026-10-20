@@ -10,3 +10,4 @@ deploy/k8s/secrets.yaml
 
 # Compose secrets
 .env
+.env.dev
